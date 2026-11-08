@@ -30,6 +30,18 @@ Windows would not let pystray create.
   features and settings is in `docs/features.md` and the credits in `docs/credits.md`.
 
 ### Fixed
+- **The tray icon appears even when Windows refuses pystray's message filter**: before
+  the window is used, pystray asks for `WM_TASKBARCREATED` with
+  `ChangeWindowMessageFilterEx`. A restricted token makes Windows answer "access denied",
+  that thread died with a traceback, and the app ran with no tray icon at all - only "the
+  icon did not start in 5 s" in the log. The refusal is logged and the icon goes on, and
+  an icon Windows refuses to add is logged instead of vanishing without a trace.
+  The log now also keeps the traceback of any thread that dies, and the start-up line
+  names the folder the settings and the log live in, so a report does not need guesswork.
+- **Start-up no longer dies when the log file cannot be written**: with a read-only
+  `%APPDATA%` (a locked-down profile, or the app started with a restricted token) opening
+  `halo_battery.log` raised a `PermissionError` before the window existed, so the app
+  showed a traceback instead of starting. It now runs without a log file.
 - **Start-up with portable mode no longer hangs in a folder it cannot write to**: the
   check whether the app folder is writable used `tempfile`, which on Windows retries
   forever when the folder's permissions deny creating files (Program Files). It is now one

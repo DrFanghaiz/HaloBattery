@@ -30,6 +30,7 @@ import sys
 import tempfile
 import threading
 import time
+import traceback
 import uuid
 import zlib
 from dataclasses import replace
@@ -69,6 +70,18 @@ def _writable(folder: str) -> bool:
     except OSError:
         return False
     return True
+
+
+def _log_file_handler(path: str) -> Optional[RotatingFileHandler]:
+    """The rotating file handler for the log, or None when the file cannot be opened.
+
+    %APPDATA% can be unwritable (a locked-down profile, or the app started with a
+    restricted token): the app then runs without a log file instead of dying at start-up
+    with a traceback the user cannot do anything about."""
+    try:
+        return RotatingFileHandler(path, maxBytes=512_000, backupCount=1, encoding="utf-8")
+    except OSError:
+        return None
 
 
 def startup_retry_due(nothing_shown: bool, seconds_since_start: float) -> bool:
@@ -116,7 +129,10 @@ def _data_base_dir(argv: List[str]) -> str:
 DATA_BASE_DIR = _data_base_dir(sys.argv)
 PORTABLE_REQUESTED = _portable_file(DATA_BASE_DIR)
 PORTABLE, DATA_DIR = _calculate_data_dir(DATA_BASE_DIR)
-os.makedirs(DATA_DIR, exist_ok=True)
+try:
+    os.makedirs(DATA_DIR, exist_ok=True)
+except OSError:
+    pass  # read-only profile: settings and the log are gone, the app still starts
 CONFIG_PATH = os.path.join(DATA_DIR, "config.json")
 LOG_PATH = os.path.join(DATA_DIR, "halo_battery.log")
 DIAG_PATH = os.path.join(DATA_DIR, "diagnostics.txt")
@@ -125,12 +141,31 @@ STATUS_PATH = os.path.join(DATA_DIR, "status.json")
 
 log = logging.getLogger("halo_battery")
 log.setLevel(logging.INFO)
-_fh = RotatingFileHandler(LOG_PATH, maxBytes=512_000, backupCount=1, encoding="utf-8")
-_fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
-log.addHandler(_fh)
+_fh = _log_file_handler(LOG_PATH)
+if _fh is None:
+    log.addHandler(logging.NullHandler())
+else:
+    _fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    log.addHandler(_fh)
 if PORTABLE_REQUESTED and not PORTABLE:
     log.warning("%s found, but %s cannot be written: settings and the log stay in %s",
                 PORTABLE_REQUESTED, DATA_BASE_DIR, DATA_DIR)
+
+
+def _log_thread_exception(args) -> None:
+    """Write the exception that killed a thread to the log, not only to stderr.
+
+    pystray builds the tray window in a thread. When Windows denies one of its calls
+    (ChangeWindowMessageFilterEx under a restricted token, for one) the only symptom
+    used to be "the icon did not start in 5 s", with no word about the reason."""
+    if args.exc_type is SystemExit:
+        return
+    log.warning("thread %s died: %s", getattr(args.thread, "name", "?"),
+                "".join(traceback.format_exception(args.exc_type, args.exc_value,
+                                                   args.exc_traceback)).strip())
+
+
+threading.excepthook = _log_thread_exception
 
 try:
     import hid  # noqa: E402
@@ -572,6 +607,22 @@ def icon_uid(key: str) -> int:
     return zlib.crc32(key.encode("utf-8")) & 0x7FFFFFFF
 
 
+def _shell_notify(code: int, data) -> tuple:
+    """Shell_NotifyIconW, with the error code pystray's own binding throws away.
+
+    "Explorer is not there" (1460) and "access denied" (5) look the same to pystray,
+    and both look like "no icon" to the user."""
+    import ctypes
+    from pystray._util import win32
+    shell32 = ctypes.WinDLL("shell32", use_last_error=True)
+    shell32.Shell_NotifyIconW.argtypes = (ctypes.c_uint32, ctypes.POINTER(win32.NOTIFYICONDATAW))
+    shell32.Shell_NotifyIconW.restype = ctypes.c_int
+    ctypes.set_last_error(0)
+    answer = shell32.Shell_NotifyIconW(code, ctypes.byref(data))
+    error = None if answer else ctypes.WinError(ctypes.get_last_error())
+    return answer, error
+
+
 def _destroy_handles(cache: dict) -> None:
     handles = [h for _img, h in cache.values()]
     cache.clear()
@@ -595,18 +646,47 @@ def _make_tray_class(base: type) -> type:
           about ten files a second per charging device, which a disk and an
           antivirus notice (#61). The 30 frames of a cycle are now loaded once."""
 
+        def _create_window(self, atom):
+            """pystray's window, but a refused message filter no longer kills the icon.
+
+            After creating the window, pystray opts in to WM_TASKBARCREATED with
+            ChangeWindowMessageFilterEx. Windows answers that with access denied under
+            a restricted token, the tray thread died, and the app was left with no
+            tray icon at all (only "the icon did not start in 5 s" in the log). The
+            call only affects that one broadcast message, which a non-elevated app
+            already receives, so a refusal is logged and the icon goes on."""
+            from pystray._util import win32
+            hwnd = win32.CreateWindowEx(
+                0, atom, None, win32.WS_POPUP,
+                0, 0, 0, 0,
+                0, None, win32.GetModuleHandle(None), None)
+            try:
+                win32.ChangeWindowMessageFilterEx(
+                    hwnd, win32.WM_TASKBARCREATED, win32.MSGFLT_ALLOW, None)
+            except OSError as e:
+                if not getattr(self, "_hb_filter_warned", False):
+                    self._hb_filter_warned = True
+                    log.warning("tray: window message filter: %s", e)
+            return hwnd
+
         def _message(self, code, flags, **kwargs):
             uid = getattr(self, "_hb_uid", None)
             if uid is None or sys.platform != "win32":
                 return super()._message(code, flags, **kwargs)
             import ctypes
             from pystray._util import win32
-            win32.Shell_NotifyIcon(code, win32.NOTIFYICONDATAW(
+            data = win32.NOTIFYICONDATAW(
                 cbSize=ctypes.sizeof(win32.NOTIFYICONDATAW),
                 hWnd=self._hwnd,
-                hID=uid,
+                uID=uid,
                 uFlags=flags,
-                **kwargs))
+                **kwargs)
+            ok, error = _shell_notify(code, data)
+            # pystray ignores the answer, so a refused NIM_ADD left the app running with no
+            # icon and nothing in the log about it
+            if not ok and code == win32.NIM_ADD and not getattr(self, "_hb_add_warned", False):
+                self._hb_add_warned = True
+                log.warning("tray: the icon was refused: %s", error)
 
         def _assert_icon_handle(self):
             cache = getattr(self, "_hb_handles", None)
@@ -2251,6 +2331,7 @@ class App:
 
     def run(self):
         log.info("start v%s", VERSION)
+        log.info("data folder: %s%s", DATA_DIR, " (portable)" if PORTABLE else "")
         worker = threading.Thread(target=self.loop, daemon=True)
         worker.start()
         threading.Thread(target=self.theme_loop, daemon=True).start()
