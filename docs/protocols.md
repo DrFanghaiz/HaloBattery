@@ -174,6 +174,19 @@ The same 17-byte frames as the Pulsar / ATK / VXE row, on the vendor collection 
 
 The same feature report exchange as the WLmouse and G-Wolves mice (`00 00 02 02 00 83` out, `a1 00 02 02 00 83 <charging> <battery %>` back), on the vendor collection `ffff:0000` of interface 2 only; protocol from Sheroune/lamzu-battery-monitory (MIT). Confirmed on a Maya X on its 8K dongle
 
+### LAMZU Atlantis Mini (Champion Edition)
+
+**Connection:** 1K "Champion" receiver (3554:F50D) or USB cable (3554:F50F)
+
+A different protocol from the Maya X in the same file: this mouse is Compx hardware (both its receiver and its cable report manufacturer "compx" under vendor id `0x3554`, the id the Pulsar / ATK / VXE mice use), so it answers the same 17-byte Compx frame as the Pulsar / ATK / VXE row instead of a feature report: report id `0x08`, command `0x04`, checksum `0x55 - sum(bytes 0-15)`, written as a 17-byte **output** report to the vendor collection `ff02:0002` of interface 1, and the reply read back on the same handle (interrupt IN - there is no feature report to read on this device at all):
+
+    request  08 04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 49
+    reply    08 04 00 00 00 02 5f 00 0f ec 00 00 00 00 00 00 ed
+
+Level in byte 6 (`0x5f` = 95 %), charging flag in byte 7 (0 = on battery, 1 = on the cable), millivolts big-endian in bytes 8-9 (`0x0fec` = 4076). Byte 5 read `0x02` in every reply; its meaning is not known, but it is not needed. The same endpoint also pushes event frames - command `0x0a` answered `08 0a 01 00 00 ... 42` here - so a reply is only accepted when the header, the command and the checksum all check out and the level is 0-100. The wired and the wireless collection lists are identical (eight collections, `ff02:0002` is the only one with a 17-byte output report), so one code path serves both.
+
+**Verified on hardware** on 2026-11-01, both transports, on the maintainer's machine: receiver `08 04 ... 5f 00 0f ec ... ed` → 95 %, not charging, 4076 mV; the same mouse on its cable `08 04 ... 5f 01 10 9f ... 38` → 95 %, charging, 4255 mV. The flag followed the cable, and the millivolts rose while it charged (4076 → 4205 → 4255 mV in three reads), which is what a real charger does. The mouse stops answering while it is idle or switched off, so the last reading is kept greyed for as long as its receiver is still in the tree (same rule as Pulsar)
+
 ### MCHOSE A5 Pro Max
 
 **Connection:** 1K receiver (2023:F013), 4K receiver (2023:F015) or USB cable (2023:F019)
@@ -197,6 +210,18 @@ A different chip from the M7 Ultra, and a different protocol: a 65-byte output r
 **Connection:** 2.4 GHz receiver (5253:1020)
 
 The vendor collection (usage page 0xFF01; the sibling 0xFF0B never answers): feature report 0x11 (the shorter report, tried first) or 0x12 with command 0x06, every payload byte inverted, which returns `53 52 31 00 02 05 07 00 09 64 00 64` — vid 0x5253, model 0x31, firmware, flags, then the level and the charging byte (1 while charging). The request has to be repeated for each read, and the receiver only relays a real value while the mouse is awake: asleep it answers with zeros, so a silent mouse keeps its last level on a greyed icon. On the cable the mouse answers on its own PID (5253:0031, the number it reports as its model id) and the receiver goes quiet: both connections share one icon, and whichever one reports charging wins
+
+### Ninjutso Sora V2
+
+**Connection:** 8K dongle (1915:AE8C) or USB cable (1915:AE12)
+
+A 32-byte **feature** report, id 5, on the vendor collection (usage page 0xFFA0): the request `05 15 00 00 01 00 …` is answered about 90 ms later by `05 15 00 00 01 00 00 00 00 <level> <charging> <full> <online>` — the level in byte 9, the charging flag in byte 10, the fully-charged flag in byte 11 and whether the mouse is awake behind the dongle in byte 12. The exchange is the one Ninjutso's own web driver makes, traced by [Fan4Metal/mouse_tray](https://github.com/Fan4Metal/mouse_tray) (MIT, `drivers/vendor/ninjutso.py`; its predecessor Sora_tray is the original write-up), which counts a mouse as asleep when byte 12 is 0 or the level is 0 — so a sleeping mouse keeps its last level on a greyed icon, and the app polls at once when new input wakes it. **Confirmed on hardware** on a Sora V2 8K dongle (1915:AE8C): the reply `05 15 00 00 01 00 00 00 00 63 00 00 01 …` read 99 %, awake, not charging, and agreed with the mouse. Note the report is 32 bytes and not the 74 the collection declares as its feature report length — Windows refuses a 74-byte buffer with ERROR_INVALID_PARAMETER (87). The charging, fully-charged and asleep bytes have not been seen yet; the other ids (1915:AE1C and 1915:AE11, wireless and cable of another Sora V2 revision per mouse_tray, and 1915:AE12, the wired id Windows had recorded on the machine this was written on) are untried
+
+### Ninjutso Sora V3
+
+**Connection:** 8K receiver (093A:EB02) or USB cable (093A:E010)
+
+A different chipset from the Sora V2 and a different protocol, taken from Ninjutso's own web driver (ninjaforce.ninjutso.cn, `/_nuxt/DAqgT4Sq.js`): **feature** report 6 on the vendor collection (usage page 0xFF01; the 0xFF00 and 0xFF02 collections of the same receiver never answer it), 15-byte payloads, one command per exchange, and a reply that echoes the command in byte 1 and carries the value in byte 8. Command 19 asks whether the receiver sees the mouse awake (1 when it does), 18 is the level in percent, 17 the charging flag and 21 the firmware version. The request `06 13 00 00 01 00 …` is answered `06 13 00 00 00 00 01 00 01 16 AE 00`, and `06 12 …` by `06 12 00 00 00 00 01 00 51 16 AE 00` — 0x51, 81 %. A mouse that has gone to sleep shows up in two shapes on this receiver: either it still answers `06 13 00 00 00 00 01 00 00` with the awake byte 0 while 18 and 17 come back as a bare `06 00 …` echo carrying no value, or the vendor collection stops answering at all and every read raises `read error`, exactly like a collection that does not carry report 6. Both mean asleep, so the provider asks 19 first and, when it is 0, does not read the level either — the last level stays on a greyed icon and the app polls at once when new input wakes the mouse. Observed on hardware while the mouse sat idle with its own sleep timer set to one minute, the receiver still enumerated in both cases. **Confirmed on hardware** on a Sora V3 8K receiver (093A:EB02): 81 %, awake, not charging — and again on the cable, where the mouse leaves the receiver behind and reports itself as 093A:E010 with the same exchange: 83 %, awake, charging, its charging byte 2 rather than 1, so any non-zero value counts. Only the ids in that driver's tables are claimed — 093A:EB02 and 093A:E010 for one Sora V3 variant, 093A:EB01/093A:E020 and 093A:EB03/093A:E021 for its two siblings — and the cable is asked first, so a charging mouse is read even while its receiver is still plugged in. A vendor collection that does not answer report 6 is skipped, because on these receivers Windows answers that read with an error that looks exactly like a mouse that is switched off. The 0xFF01 collection that does answer declares a 64-byte feature report while its sibling on the same page declares 16, and hidapi does not report those lengths, so both are tried in turn
 
 ### Pulsar X2 V2 Mini, Pulsar X2 CrazyLight Mini, ATK VXE R1 SE+, VXE R1 Pro Max
 

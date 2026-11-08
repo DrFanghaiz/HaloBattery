@@ -6,6 +6,19 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.16.0] - 2026-11-01
+
+New device: **LAMZU Atlantis Mini (Champion Edition)**, on its 1K "Champion" receiver or
+on the USB cable. Fixes for devices that only appear after a Fast Startup boot, the Xbox
+One S controller over Bluetooth, a start-up hang in portable mode, and a tray icon that
+Windows would not let pystray create.
+
+### Added
+- **LAMZU Atlantis Mini (Champion Edition)**: the mouse speaks Compx, not the feature
+  report the Maya X uses, so it is read with the same 17-byte frame as the Pulsar / ATK /
+  VXE mice on the vendor collection `ff02:0002` - on the 1K receiver (3554:F50D) and on
+  the USB cable (3554:F50F), level, charging flag and voltage, verified on hardware.
+
 ### Changed
 - **A tidier repository and a shorter README**: the app's modules moved into the `halo/`
   package (`halo_battery.pyw` stays the entry point), the .bat helpers into `scripts/`
