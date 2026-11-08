@@ -125,7 +125,7 @@ class ProviderTest(unittest.TestCase):
     def poll(self, entries, pads):
         bus = FakeBus(pads)
         E.hid = types.SimpleNamespace(device=bus.device_class())
-        E.hidlist = types.SimpleNamespace(enumerate=lambda vid=0: list(entries))
+        E.hidlist = types.SimpleNamespace(enumerate=lambda vid=0, pid=0: list(entries))
         return self.provider.poll()
 
     def test_enhanced_bluetooth_report_is_read(self):

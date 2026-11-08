@@ -102,7 +102,7 @@ class ProviderTest(unittest.TestCase):
 
     def poll(self, entries, mice):
         A.hid = types.SimpleNamespace(device=FakeBus(mice).device_class())
-        A.hidlist = types.SimpleNamespace(enumerate=lambda vid=0: list(entries))
+        A.hidlist = types.SimpleNamespace(enumerate=lambda vid=0, pid=0: list(entries))
         return A.AsusProvider().poll()
 
 

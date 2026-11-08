@@ -117,7 +117,7 @@ class ProviderTest(unittest.TestCase):
     def poll(self, entries, pucks, advance=False):
         bus = FakeBus(pucks, clock=self.clock if advance else None)
         S.hid = types.SimpleNamespace(device=bus.device_class())
-        S.hidlist = types.SimpleNamespace(enumerate=lambda vid=0: list(entries))
+        S.hidlist = types.SimpleNamespace(enumerate=lambda vid=0, pid=0: list(entries))
         return self.provider.poll()
 
 

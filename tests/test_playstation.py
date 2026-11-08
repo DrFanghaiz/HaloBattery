@@ -133,7 +133,7 @@ class ProviderTest(unittest.TestCase):
     def poll(self, entries, pads):
         bus = FakeBus(pads)
         P.hid = types.SimpleNamespace(device=bus.device_class())
-        P.hidlist = types.SimpleNamespace(enumerate=lambda vid=0: list(entries))
+        P.hidlist = types.SimpleNamespace(enumerate=lambda vid=0, pid=0: list(entries))
         return self.provider.poll()
 
     # ---- issue #96: never switch a Bluetooth controller by default

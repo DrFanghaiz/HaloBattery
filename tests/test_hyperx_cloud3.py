@@ -105,14 +105,14 @@ class Base(unittest.TestCase):
         H.hid = types.SimpleNamespace(device=lambda: dongle)
         entry = {"product_id": 0x05B7, "path": PATH, "interface_number": 3,
                  "usage_page": H.USAGE_PAGE, "usage": H.USAGE}
-        H.hidlist = types.SimpleNamespace(enumerate=lambda vid=0: [entry])
+        H.hidlist = types.SimpleNamespace(enumerate=lambda vid=0, pid=0: [entry])
         p = H.HyperXCloud3Provider()
         out = p.poll()
         return out, p.diagnostics()
 
     def poll_entries(self, dongle, entries):
         H.hid = types.SimpleNamespace(device=lambda: dongle)
-        H.hidlist = types.SimpleNamespace(enumerate=lambda vid=0: list(entries))
+        H.hidlist = types.SimpleNamespace(enumerate=lambda vid=0, pid=0: list(entries))
         p = H.HyperXCloud3Provider()
         return p.poll(), p.diagnostics()
 
@@ -142,7 +142,7 @@ class Base(unittest.TestCase):
                 pass
 
         H.hid = types.SimpleNamespace(device=MultiDevice)
-        H.hidlist = types.SimpleNamespace(enumerate=lambda vid=0: list(entries))
+        H.hidlist = types.SimpleNamespace(enumerate=lambda vid=0, pid=0: list(entries))
         p = H.HyperXCloud3Provider()
         return p.poll(), p.diagnostics()
 

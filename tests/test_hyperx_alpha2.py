@@ -93,7 +93,7 @@ class Polling(unittest.TestCase):
         self.fake = FakeDevice([None, REPLY_61, REPLY_51])
         self._hid, self._enumerate = P.hid, P.hidlist.enumerate
         P.hid = types.SimpleNamespace(device=lambda: self.fake)
-        P.hidlist.enumerate = lambda vid: infos_for(SHAPE)
+        P.hidlist.enumerate = lambda vid, pid=0: infos_for(SHAPE)
 
     def tearDown(self):
         P.hid, P.hidlist.enumerate = self._hid, self._enumerate
@@ -130,13 +130,13 @@ class Polling(unittest.TestCase):
         self.assertEqual(self.fake.written, [P.make_request()])
 
     def test_ignores_the_chat_half(self):
-        P.hidlist.enumerate = lambda vid: infos_for(SHAPE, pid=0x0ABE) + [
+        P.hidlist.enumerate = lambda vid, pid=0: infos_for(SHAPE, pid=0x0ABE) + [
             {"path": b"chat", "product_id": 0x0ABE, "interface_number": 5,
              "usage_page": 0xFF13, "usage": 0x0001}]
         self.assertEqual(P.HyperXAlpha2Provider().poll(), [])
 
     def test_missing_collection_writes_nothing(self):
-        P.hidlist.enumerate = lambda vid: [d for d in infos_for(SHAPE) if d["usage"] != 0xFF00]
+        P.hidlist.enumerate = lambda vid, pid=0: [d for d in infos_for(SHAPE) if d["usage"] != 0xFF00]
         self.fake.written.clear()
         self.assertEqual(P.HyperXAlpha2Provider().poll(), [])
         self.assertEqual(self.fake.written, [])

@@ -79,7 +79,7 @@ class AeroxTest(unittest.TestCase):
         rx = FakeReceiver(level_byte)
         S.hid = types.SimpleNamespace(device=rx.device_class())
         entries = issue_79_entries(pid)
-        S.hidlist = types.SimpleNamespace(enumerate=lambda vid=0: list(entries))
+        S.hidlist = types.SimpleNamespace(enumerate=lambda vid=0, pid=0: list(entries))
         return S.SteelSeriesProvider().poll(), rx
 
     def test_aerox_9_issue_79(self):

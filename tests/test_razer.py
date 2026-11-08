@@ -163,7 +163,7 @@ class PollTest(unittest.TestCase):
     def poll(self, entries, mice):
         bus = FakeBus(mice)
         R.hid = types.SimpleNamespace(device=bus.device_class())
-        R.hidlist = types.SimpleNamespace(enumerate=lambda vid=0: list(entries))
+        R.hidlist = types.SimpleNamespace(enumerate=lambda vid=0, pid=0: list(entries))
         return R.RazerProvider().poll()
 
     def test_the_blackwidow_answers_through_its_own_collection(self):
@@ -286,7 +286,7 @@ class CableTest(PollTest):
     def poll_with(self, provider, entries, mice):
         bus = FakeBus(mice)
         R.hid = types.SimpleNamespace(device=bus.device_class())
-        R.hidlist = types.SimpleNamespace(enumerate=lambda vid=0: list(entries))
+        R.hidlist = types.SimpleNamespace(enumerate=lambda vid=0, pid=0: list(entries))
         return provider.poll()
 
     def test_cable_hides_the_greyed_receiver_icon(self):

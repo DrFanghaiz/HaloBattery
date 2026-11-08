@@ -193,7 +193,7 @@ class LogitechTestCase(unittest.TestCase):
     def use(self, entries, paths):
         self.bus = FakeBus(paths)
         L.hid = types.SimpleNamespace(device=self.bus.device_class())
-        L.hidlist = types.SimpleNamespace(enumerate=lambda vid=0: list(entries))
+        L.hidlist = types.SimpleNamespace(enumerate=lambda vid=0, pid=0: list(entries))
         return self.bus
 
 

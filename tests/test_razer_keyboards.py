@@ -58,7 +58,7 @@ class KeyboardPollTest(unittest.TestCase):
 
     def poll(self, entries, devices, provider=None):
         R.hid = types.SimpleNamespace(device=FakeBus(devices).device_class())
-        R.hidlist = types.SimpleNamespace(enumerate=lambda vid=0: list(entries))
+        R.hidlist = types.SimpleNamespace(enumerate=lambda vid=0, pid=0: list(entries))
         self.provider = provider or R.RazerProvider()
         return self.provider.poll()
 

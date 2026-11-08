@@ -116,7 +116,7 @@ class ForeignRepliesTest(unittest.TestCase):
     def poll(self, mice):
         entries = issue_108_entries()
         R.hid = types.SimpleNamespace(device=FakeBus(mice).device_class())
-        R.hidlist = types.SimpleNamespace(enumerate=lambda vid=0: list(entries))
+        R.hidlist = types.SimpleNamespace(enumerate=lambda vid=0, pid=0: list(entries))
         return self.provider.poll()
 
     def mice(self, answer_on=0, **kw):

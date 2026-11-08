@@ -123,7 +123,7 @@ class PollTest(unittest.TestCase):
     def poll(self, fake, ents):
         M.hid = types.SimpleNamespace(device=lambda: fake)
         M.hidlist = types.SimpleNamespace(
-            enumerate=lambda vid=0: [e for e in ents if e["vendor_id"] == vid])
+            enumerate=lambda vid=0, pid=0: [e for e in ents if e["vendor_id"] == vid])
         p = M.MchoseProvider()
         return p.poll(), p.diagnostics()
 

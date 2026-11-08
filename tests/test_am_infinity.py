@@ -83,7 +83,7 @@ class PollTest(unittest.TestCase):
 
     def poll(self, entries, cols):
         A.hid = types.SimpleNamespace(device=fake_device_class(cols))
-        A.hidlist = types.SimpleNamespace(enumerate=lambda vid=0: list(entries))
+        A.hidlist = types.SimpleNamespace(enumerate=lambda vid=0, pid=0: list(entries))
         return self.provider.poll()
 
     def cols(self, entries, replies=(None,)):

@@ -141,7 +141,7 @@ class HyperXAlpha2Provider(Provider):
         if hid is None:
             return []
         try:
-            infos = hidlist.enumerate(HYPERX_VID)
+            infos = hidlist.enumerate(HYPERX_VID, PID)
         except Exception as e:  # pragma: no cover
             log.warning("hid.enumerate(hyperx_alpha2): %s", e)
             return []

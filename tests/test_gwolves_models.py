@@ -84,7 +84,7 @@ class ModelTest(unittest.TestCase):
 
     def poll(self, entries, cols):
         G.hid = types.SimpleNamespace(device=FakeBus(cols).device_class())
-        G.hidlist = types.SimpleNamespace(enumerate=lambda vid=0: list(entries))
+        G.hidlist = types.SimpleNamespace(enumerate=lambda vid=0, pid=0: list(entries))
         G.feature_length = lambda path: cols[path].feature_len
         return self.provider.poll()
 

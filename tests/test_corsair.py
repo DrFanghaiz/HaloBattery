@@ -196,7 +196,7 @@ class BragiPollTest(unittest.TestCase):
     def poll(self, entries, dongles):
         bus = FakeBus(dongles)
         C.hid = types.SimpleNamespace(device=bus.device_class())
-        C.hidlist = types.SimpleNamespace(enumerate=lambda vid=0: list(entries))
+        C.hidlist = types.SimpleNamespace(enumerate=lambda vid=0, pid=0: list(entries))
         return C.CorsairProvider().poll(), bus
 
     def test_the_dongle_shows_the_reporter_s_55_percent(self):

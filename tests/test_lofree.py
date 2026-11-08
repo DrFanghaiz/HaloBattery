@@ -107,7 +107,7 @@ class ProviderTest(unittest.TestCase):
                 return super().read(n, timeout)
 
         F.hid = types.SimpleNamespace(device=Clocked)
-        F.hidlist = types.SimpleNamespace(enumerate=lambda vid=0: list(entries))
+        F.hidlist = types.SimpleNamespace(enumerate=lambda vid=0, pid=0: list(entries))
         return F.LofreeProvider().poll()
 
 

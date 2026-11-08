@@ -83,7 +83,7 @@ class PollTest(unittest.TestCase):
         self.rx = FakeReceiver()
         self.entries = [ENTRY]
         J.hid = types.SimpleNamespace(device=self.rx.device_class())
-        J.hidlist = types.SimpleNamespace(enumerate=lambda vid=0: list(self.entries))
+        J.hidlist = types.SimpleNamespace(enumerate=lambda vid=0, pid=0: list(self.entries))
         self.provider = J.JblProvider()
 
     def tearDown(self):

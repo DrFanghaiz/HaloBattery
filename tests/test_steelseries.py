@@ -73,7 +73,7 @@ class SteelSeriesTestCase(unittest.TestCase):
     def use(self, entries, paths):
         self.bus = FakeBus(paths)
         S.hid = types.SimpleNamespace(device=self.bus.device_class())
-        S.hidlist = types.SimpleNamespace(enumerate=lambda vid=0: list(entries))
+        S.hidlist = types.SimpleNamespace(enumerate=lambda vid=0, pid=0: list(entries))
         return self.bus
 
     def poll(self, entries, paths):

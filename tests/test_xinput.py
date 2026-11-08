@@ -78,7 +78,7 @@ class ProviderTest(unittest.TestCase):
     def poll(self, slots, reports, hid_devices=(), paths=()):
         X.load_xinput = lambda: FakeDll(slots)
         X.hidlist = types.SimpleNamespace(
-            enumerate=lambda vid=0: [d for d in hid_devices if d["vendor_id"] == vid],
+            enumerate=lambda vid=0, pid=0: [d for d in hid_devices if d["vendor_id"] == vid],
             interface_paths=lambda: frozenset(paths))
         X.wgi.query = lambda diag: list(reports)
         p = X.XInputProvider()

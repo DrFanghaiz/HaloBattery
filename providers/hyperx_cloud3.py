@@ -205,7 +205,7 @@ class HyperXCloud3Provider(Provider):
         if hid is None:
             return []
         try:
-            infos = hidlist.enumerate(HP_VID)
+            infos = hidlist.enumerate(HP_VID, PIDS)
         except Exception as e:  # pragma: no cover
             log.warning("hid.enumerate(hyperx cloud iii): %s", e)
             return []

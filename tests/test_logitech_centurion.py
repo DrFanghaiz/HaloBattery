@@ -138,7 +138,7 @@ class CenturionTest(unittest.TestCase):
     def poll(self, rx, entries=None):
         entries = issue_103_entries() if entries is None else entries
         L.hid = types.SimpleNamespace(device=FakeBus({b"ffa0": rx}).device_class())
-        L.hidlist = types.SimpleNamespace(enumerate=lambda vid=0: list(entries))
+        L.hidlist = types.SimpleNamespace(enumerate=lambda vid=0, pid=0: list(entries))
         return self.provider.poll()
 
     def test_issue_103(self):

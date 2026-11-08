@@ -120,7 +120,7 @@ class Cloud3STest(unittest.TestCase):
     def poll(self, dongle, entries=None):
         entries = issue_106_entries() if entries is None else entries
         H.hid = types.SimpleNamespace(device=FakeBus(dongle).device_class())
-        H.hidlist = types.SimpleNamespace(enumerate=lambda vid=0: list(entries))
+        H.hidlist = types.SimpleNamespace(enumerate=lambda vid=0, pid=0: list(entries))
         return self.provider.poll()
 
     def test_issue_106(self):

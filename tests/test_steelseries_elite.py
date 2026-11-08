@@ -129,7 +129,7 @@ class EliteTest(unittest.TestCase):
     def poll(self, station, entries=None):
         entries = issue_138_entries() if entries is None else entries
         E.hid = types.SimpleNamespace(device=device_class(station))
-        E.hidlist = types.SimpleNamespace(enumerate=lambda vid=0: list(entries))
+        E.hidlist = types.SimpleNamespace(enumerate=lambda vid=0, pid=0: list(entries))
         return self.provider.poll()
 
     def levels(self, res):
@@ -360,7 +360,7 @@ class ExistingProviderTest(unittest.TestCase):
                 super().open_path(path)
 
         S.hid = types.SimpleNamespace(device=Tracking)
-        S.hidlist = types.SimpleNamespace(enumerate=lambda vid=0: issue_138_entries())
+        S.hidlist = types.SimpleNamespace(enumerate=lambda vid=0, pid=0: issue_138_entries())
         self.assertEqual(S.SteelSeriesProvider().poll(), [])
         self.assertEqual(opened, [])
         self.assertEqual(station.tried, [])

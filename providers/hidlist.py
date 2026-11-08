@@ -44,10 +44,33 @@ SHORT_RETRY = 30.0
 # USB paths carry the vendor id as "VID_054C"; Bluetooth HID paths use
 # "VID&0002054C" (eight hex digits, the vendor id is the low four). Match both.
 _VID_RE = re.compile(r"vid[_&]([0-9a-f]{4,8})")
+_PID_RE = re.compile(r"pid[_&]([0-9a-f]{4,8})")
 
 
 def _path_vids(path: str) -> FrozenSet[int]:
     return frozenset(int(m.group(1)[-4:], 16) for m in _VID_RE.finditer(path))
+
+
+def _path_pids(path: str) -> FrozenSet[int]:
+    return frozenset(int(m.group(1)[-4:], 16) for m in _PID_RE.finditer(path))
+
+
+def product_present(paths: FrozenSet[str], vid: int, pids) -> bool:
+    """True unless the paths prove that this vendor's product is absent.
+
+    hidapi's hid.enumerate(vid) opens every device of the vendor to read its attributes,
+    and one unrelated collection of that vendor can block for a minute (a HyperX station
+    with its isochronous "Chat" half on this machine cost 60.02 s while its battery
+    collection was not even plugged in). The configuration manager already knows the
+    product ids without opening anything, so a vendor that is present but whose pids are
+    not can be skipped. `pids` is one id or a collection of ids. Paths without a pid
+    token prove nothing and are let through."""
+    want = {pids} if isinstance(pids, int) else set(pids)
+    pids_here: set = set()
+    for p in paths:
+        if vid in _path_vids(p):
+            pids_here |= _path_pids(p)
+    return not pids_here or bool(pids_here & want)
 
 
 class _GUID(ctypes.Structure):
@@ -114,8 +137,11 @@ def present_vids(paths: FrozenSet[str]) -> FrozenSet[int]:
     return frozenset(out)
 
 
-def enumerate(vid: int = 0) -> List[dict]:  # noqa: A001  (mirrors hid.enumerate)
-    """hid.enumerate(vid), re-run only when the set of HID devices changes."""
+def enumerate(vid: int = 0, pid: int = 0) -> List[dict]:  # noqa: A001  (mirrors hid.enumerate)
+    """hid.enumerate(vid), re-run only when the set of HID devices changes.
+
+    Pass `pid` when the caller looks for one product: hidapi then is not even asked while
+    the configuration manager says that product is not plugged in."""
     if hid is None:
         return []
     paths = interface_paths()
@@ -125,6 +151,9 @@ def enumerate(vid: int = 0) -> List[dict]:  # noqa: A001  (mirrors hid.enumerate
     with _lock:
         if vid and not vendor_present(paths, vid):
             _cache[vid] = (paths, [])
+            _stats["skipped"] += 1
+            return []
+        if vid and pid and not product_present(paths, vid, pid):
             _stats["skipped"] += 1
             return []
         hit = _cache.get(vid)
