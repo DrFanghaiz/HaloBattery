@@ -41,6 +41,27 @@ class PortableModeTest(unittest.TestCase):
         with open(os.path.join(self.app_dir, hb.PORTABLE_MARKER), "w") as f:
             f.write("")
 
+    def make_config(self):
+        with open(os.path.join(self.app_dir, hb.CONFIG_NAME), "w") as f:
+            f.write("{}")
+
+    def test_config_next_to_the_app_keeps_data_in_app_folder(self):
+        self.make_config()
+        self.assertEqual(hb._calculate_data_dir(self.app_dir, APPDATA), (True, self.app_dir))
+
+    def test_read_only_app_folder_with_a_config_falls_back_to_appdata(self):
+        self.make_config()
+        with mock.patch.object(hb, "_writable", return_value=False):
+            self.assertEqual(hb._calculate_data_dir(self.app_dir, APPDATA),
+                             (False, os.path.join(APPDATA, "HaloBattery")))
+
+    def test_portable_file_names_the_trigger(self):
+        self.assertIsNone(hb._portable_file(self.app_dir))
+        self.make_config()
+        self.assertEqual(hb._portable_file(self.app_dir), hb.CONFIG_NAME)
+        self.make_marker()
+        self.assertEqual(hb._portable_file(self.app_dir), hb.PORTABLE_MARKER)
+
     def test_without_marker_data_goes_to_appdata(self):
         self.assertEqual(hb._calculate_data_dir(self.app_dir, APPDATA),
                          (False, os.path.join(APPDATA, "HaloBattery")))

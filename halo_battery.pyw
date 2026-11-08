@@ -50,6 +50,7 @@ sys.path.insert(0, BASE_DIR)
 
 APPDATA_DIR = os.environ.get("APPDATA", os.path.expanduser("~"))
 PORTABLE_MARKER = "portable.txt"   # next to the app: keep settings and the log in its folder
+CONFIG_NAME = "config.json"        # an existing one next to the app does the same
 
 
 def _writable(folder: str) -> bool:
@@ -75,6 +76,18 @@ def startup_retry_due(nothing_shown: bool, seconds_since_start: float) -> bool:
     return nothing_shown and seconds_since_start < STARTUP_RETRY_WINDOW
 
 
+def _portable_file(base_dir: str) -> Optional[str]:
+    """The name of the file that turns portable mode on in `base_dir`, or None.
+
+    `portable.txt` asks for it; an existing `config.json` means the folder already holds
+    the settings, so a copy of the app folder stays portable without the marker."""
+    if os.path.exists(os.path.join(base_dir, PORTABLE_MARKER)):
+        return PORTABLE_MARKER
+    if os.path.exists(os.path.join(base_dir, CONFIG_NAME)):
+        return CONFIG_NAME
+    return None
+
+
 def _calculate_data_dir(base_dir: str, appdata_dir: Optional[str] = None):
     """Pick the folder for settings, the log, the history and the diagnostics report.
 
@@ -84,7 +97,7 @@ def _calculate_data_dir(base_dir: str, appdata_dir: Optional[str] = None):
     """
     if appdata_dir is None:
         appdata_dir = APPDATA_DIR
-    if os.path.exists(os.path.join(base_dir, PORTABLE_MARKER)) and _writable(base_dir):
+    if _portable_file(base_dir) and _writable(base_dir):
         return True, base_dir
     return False, os.path.join(appdata_dir, APP_NAME)
 
@@ -101,7 +114,7 @@ def _data_base_dir(argv: List[str]) -> str:
 
 
 DATA_BASE_DIR = _data_base_dir(sys.argv)
-PORTABLE_REQUESTED = os.path.exists(os.path.join(DATA_BASE_DIR, PORTABLE_MARKER))
+PORTABLE_REQUESTED = _portable_file(DATA_BASE_DIR)
 PORTABLE, DATA_DIR = _calculate_data_dir(DATA_BASE_DIR)
 os.makedirs(DATA_DIR, exist_ok=True)
 CONFIG_PATH = os.path.join(DATA_DIR, "config.json")
@@ -117,7 +130,7 @@ _fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
 log.addHandler(_fh)
 if PORTABLE_REQUESTED and not PORTABLE:
     log.warning("%s found, but %s cannot be written: settings and the log stay in %s",
-                PORTABLE_MARKER, BASE_DIR, DATA_DIR)
+                PORTABLE_REQUESTED, DATA_BASE_DIR, DATA_DIR)
 
 try:
     import hid  # noqa: E402

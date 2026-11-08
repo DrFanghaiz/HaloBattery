@@ -20,6 +20,10 @@ Windows would not let pystray create.
   the USB cable (3554:F50F), level, charging flag and voltage, verified on hardware.
 
 ### Changed
+- **A `config.json` next to the app turns on portable mode**: a copy of the app folder
+  that already holds its settings keeps using them, without a `portable.txt` beside it, so
+  a portable build can be handed out with its settings in place; that file wins over the
+  one in the `%APPDATA%` folder, and a read-only folder still falls back there.
 - **A tidier repository and a shorter README**: the app's modules moved into the `halo/`
   package (`halo_battery.pyw` stays the entry point), the .bat helpers into `scripts/`
   and CONTRIBUTING.md into `.github/`. The README now fits on one screen; the full list of
