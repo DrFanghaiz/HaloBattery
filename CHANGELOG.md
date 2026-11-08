@@ -1019,7 +1019,8 @@ First public release.
   in or unplugged.
 - Settings and the autostart entry are migrated from the app's earlier name, Battery Tray.
 
-[Unreleased]: ../../compare/v1.15.0...HEAD
+[Unreleased]: ../../compare/v1.16.0...HEAD
+[1.16.0]: ../../compare/v1.15.0...v1.16.0
 [1.15.0]: ../../compare/v1.14.0...v1.15.0
 [1.14.0]: ../../compare/v1.13.0...v1.14.0
 [1.13.0]: ../../compare/v1.12.0...v1.13.0
