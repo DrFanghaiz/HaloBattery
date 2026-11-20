@@ -140,7 +140,7 @@ class LamzuProvider(Provider):
             return [DeviceStatus(key, NAME, batt, chg, True, "lamzu", kind="mouse")]
         if self._last and time.time() - self._last[2] < ASLEEP_KEEP:
             return [DeviceStatus(key, NAME, self._last[0], self._last[1], False, "lamzu",
-                                 kind="mouse")]
+                                 kind="mouse", wake_on_input=True)]
         return []
 
     def diagnostics(self) -> List[str]:
@@ -153,6 +153,7 @@ class LamzuProvider(Provider):
 COMPX_VID = 0x3554
 ATLANTIS_PIDS = {
     0xF510: "LAMZU Thorn (4K receiver)",
+    0xF50D: "LAMZU Atlantis Mini (1K receiver)",
     0xF50F: "LAMZU Thorn (wired)",
 }
 THORN_KEY = "lamzu:3554f510"
@@ -191,7 +192,8 @@ class LamzuAtlantisProvider(Provider):
             for attempt in range(COMPX_READ_ATTEMPTS):
                 r = dev.read(COMPX_PAYLOAD_LEN, COMPX_READ_TIMEOUT_MS)
                 if not r:
-                    break
+                    time.sleep(0.02)     # a timeout is not final: try again
+                    continue
                 self._diag.append(f"  reply {attempt + 1}: {hexdump(r)}")
                 parsed = compx_parse_power(r)
                 if parsed is not None:

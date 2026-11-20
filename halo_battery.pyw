@@ -148,7 +148,7 @@ from providers import (AmInfinityProvider, AstroProvider, AsusProvider,  # noqa:
                        HyperXProvider, JblProvider,
                        KeychronProvider, LamzuProvider, LofreeProvider, LogitechProvider,
                        LogitechCenturionProvider,
-                       MchoseProvider, NintendoProvider, NzxtProvider, PlayStationProvider, PulsarProvider,
+                       MchoseProvider, NintendoProvider, NinjutsoProvider, NzxtProvider, PlayStationProvider, PulsarProvider,
                        RazerProvider, SteelSeriesEliteProvider, SteelSeriesProvider,
                        VaxeeProvider, WLmouseProvider, XInputProvider, SteamProvider, EndgameWEProvider,
                        AjazzProvider, AtkKeyboardProvider, AtkNearlinkProvider, AulaProvider, DareuProvider,
@@ -236,6 +236,7 @@ PROVIDER_LABELS = {
     "monsgeek": "MonsGeek keyboards",
     "nintendo": "Nintendo Switch controllers",
     "nzxt": "NZXT mice",
+    "ninjutso": "Ninjutso mice",
     "endgame_4k": "Endgame Gear 4K mice (XM2w / OP1w)",
     "plantronics": "Plantronics headsets (BT600 adapter)",
     "playstation": "PlayStation controllers",
@@ -263,7 +264,7 @@ def make_providers(jbl_listen_first: float = 0.0) -> list:
             JblProvider(listen_first=jbl_listen_first), LogitechProvider(), SteelSeriesProvider(), XInputProvider(),
             PlayStationProvider(), EightBitDoProvider(), BarracudaProvider(), BarracudaXProvider(), NintendoProvider(),
             AsusProvider(), GWolvesProvider(), AulaProvider(), LofreeProvider(), AstroProvider(), CorsairProvider(),
-            LamzuProvider(), VaxeeProvider(), AmInfinityProvider(),
+            LamzuProvider(), NinjutsoProvider(), VaxeeProvider(), AmInfinityProvider(),
             SteelSeriesEliteProvider(), LogitechCenturionProvider(), HyperXCloud3SProvider(), NzxtProvider(),
             SteamProvider(), EndgameWEProvider(),
             MchoseV9Provider(), DareuProvider(), ShieldProvider(), LamzuAtlantisProvider(),
@@ -589,12 +590,28 @@ def sync_installed_version(app_dir: str = BASE_DIR, version: str = VERSION) -> b
         return False                         # not installed by setup
 
 
+_single_instance_mutex = None      # kept for the process lifetime: closing it releases the name
+
+
 def single_instance() -> bool:
+    global _single_instance_mutex
     if sys.platform != "win32":
         return True
     import ctypes
-    ctypes.windll.kernel32.CreateMutexW(None, False, "Global\\HaloBattery_single_instance")
-    return ctypes.windll.kernel32.GetLastError() != 183  # ERROR_ALREADY_EXISTS
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    k32.CreateMutexW.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_wchar_p]
+    k32.CreateMutexW.restype = ctypes.c_void_p
+    ctypes.set_last_error(0)
+    handle = k32.CreateMutexW(None, False, "Global\\HaloBattery_single_instance")
+    error = ctypes.get_last_error()
+    if not handle:
+        # No mutex (a restricted token cannot create a Global object): there is nothing
+        # to compare, so start rather than refuse. Logged because it means two copies
+        # can run side by side.
+        log.warning("single instance: CreateMutex failed (error %s); continuing", error)
+        return True
+    _single_instance_mutex = handle
+    return error != 183          # ERROR_ALREADY_EXISTS: another copy owns the name
 
 
 # SHQueryUserNotificationState: what Windows itself uses to hold back notifications.
@@ -614,6 +631,45 @@ INPUT_WAKE_GAP = 5          # s between input-driven re-reads of a greyed (aslee
                             # seconds still sees the device wake (see wait_next, #87)
 
 
+def _foreground_covers_monitor():
+    """True/False when Windows can tell whether the foreground window is full screen.
+
+    QUNS_BUSY (2) is also reported by shells, remote-control tools and presentation
+    helpers that are not games: the app then polled every 5 minutes on a normal desktop.
+    The foreground window's rectangle tells them apart; None keeps trusting the state."""
+    if sys.platform != "win32":
+        return None
+    import ctypes
+    from ctypes import wintypes
+
+    class RECT(ctypes.Structure):
+        _fields_ = [("left", ctypes.c_long), ("top", ctypes.c_long),
+                    ("right", ctypes.c_long), ("bottom", ctypes.c_long)]
+
+    class MONITORINFO(ctypes.Structure):
+        _fields_ = [("cbSize", wintypes.DWORD), ("rcMonitor", RECT),
+                    ("rcWork", RECT), ("dwFlags", wintypes.DWORD)]
+
+    try:
+        user32 = ctypes.windll.user32
+        hwnd = user32.GetForegroundWindow()
+        if not hwnd:
+            return None
+        rect = RECT()
+        if not user32.GetWindowRect(hwnd, ctypes.byref(rect)):
+            return None
+        monitor = user32.MonitorFromWindow(hwnd, 2)      # MONITOR_DEFAULTTONEAREST
+        info = MONITORINFO()
+        info.cbSize = ctypes.sizeof(MONITORINFO)
+        if not user32.GetMonitorInfoW(monitor, ctypes.byref(info)):
+            return None
+        screen = info.rcMonitor
+        return (rect.left <= screen.left and rect.top <= screen.top
+                and rect.right >= screen.right and rect.bottom >= screen.bottom)
+    except (AttributeError, OSError, ValueError):
+        return None
+
+
 def fullscreen_app_running() -> bool:
     if sys.platform != "win32":
         return False
@@ -624,7 +680,14 @@ def fullscreen_app_running() -> bool:
             return False
     except (AttributeError, OSError):
         return False
-    return state.value in QUNS_FULLSCREEN
+    if state.value not in QUNS_FULLSCREEN:
+        return False
+    if state.value == 2:
+        # the ambiguous one: only quiet when the window really covers the screen
+        covers = _foreground_covers_monitor()
+        if covers is False:
+            return False
+    return True
 
 
 # ------------------------------------------------------------- tray icons

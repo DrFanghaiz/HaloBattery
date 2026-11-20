@@ -87,6 +87,7 @@ MESSAGES = {
     "provider.logitech_centurion": "Logitech G PRO X 2 LIGHTSPEED",
     "provider.mchose": "MCHOSE マウス",
     "provider.nintendo": "Nintendo Switch コントローラー",
+    "provider.ninjutso": "Ninjutso マウス",
     "provider.playstation": "PlayStation コントローラー",
     "provider.plantronics": "Plantronics ヘッドセット（BT600 アダプター）",
     "provider.pulsar": "Pulsar / ATK VXE / Redragon マウス",
