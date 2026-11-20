@@ -143,7 +143,7 @@ class LamzuProvider(Provider):
 
     def _poll_maya(self) -> List[DeviceStatus]:
         try:
-            infos = hidlist.enumerate(LAMZU_VID)
+            infos = hidlist.enumerate(LAMZU_VID, PIDS)
         except Exception as e:  # pragma: no cover
             log.warning("hid.enumerate(lamzu): %s", e)
             return []
@@ -178,7 +178,7 @@ class LamzuProvider(Provider):
             return [DeviceStatus(key, NAME, batt, chg, True, "lamzu", kind="mouse")]
         if self._last and time.time() - self._last[2] < ASLEEP_KEEP:
             return [DeviceStatus(key, NAME, self._last[0], self._last[1], False, "lamzu",
-                                 kind="mouse")]
+                                 kind="mouse", wake_on_input=True)]
         return []
 
     def diagnostics(self) -> List[str]:
@@ -199,7 +199,8 @@ class LamzuProvider(Provider):
             for attempt in range(READ_ATTEMPTS):
                 r = dev.read(PAYLOAD_LEN, READ_TIMEOUT_MS)
                 if not r:
-                    break
+                    time.sleep(0.02)     # a timeout is not final: try again
+                    continue
                 self._diag.append(f"    reply {attempt + 1}: {hexdump(r)}")
                 if parse_power(r) is not None:
                     return list(r)
@@ -222,7 +223,7 @@ class LamzuProvider(Provider):
 
     def _poll_atlantis(self) -> List[DeviceStatus]:
         try:
-            infos = hidlist.enumerate(COMPX_VID)
+            infos = hidlist.enumerate(COMPX_VID, ATLANTIS_PIDS)
         except Exception as e:  # pragma: no cover
             log.warning("hid.enumerate(%04x): %s", COMPX_VID, e)
             return []
@@ -266,5 +267,5 @@ class LamzuProvider(Provider):
         if self._atlantis and time.time() - self._atlantis[2] < ASLEEP_KEEP:
             level, charging, _ = self._atlantis
             return [DeviceStatus(ATLANTIS_KEY, ATLANTIS_NAME, level, charging, False,
-                                 "lamzu", kind="mouse")]
+                                 "lamzu", kind="mouse", wake_on_input=True)]
         return []
