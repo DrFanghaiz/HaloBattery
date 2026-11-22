@@ -13,7 +13,8 @@ ninjutso.py, and its predecessor Fan4Metal/Sora_tray):
   byte 9  level in percent
   byte 10 charging
   byte 11 fully charged
-  byte 12 the mouse is awake behind the dongle (0: asleep, level 0 as well)
+  byte 12 the mouse is awake behind the dongle (0: asleep, level 0 as well);
+          on the cable it stays 0 even while charging, so the cable path ignores it
 
 Nothing else is ever written to the mouse. The reply comes back in about 90 ms,
 which is the delay the reference waits before reading it, and the request is
@@ -120,11 +121,16 @@ def looks_like_sora(d: dict) -> bool:
     return "ninjutso" in text or "sora" in text
 
 
-def parse_report(resp) -> Optional[Reading]:
+def parse_report(resp, allow_offline: bool = False) -> Optional[Reading]:
     """level, charging out of the 32-byte Sora V2 reply - None when it is not one.
 
     The report id is expected at index 0, as hidapi returns it; a buffer without
     the id (the 0x15 first) is accepted too, at the previous indices.
+
+    ``allow_offline`` is for the cable: a wired Sora V2 keeps ``online`` at 0
+    (there is no radio link), but still reports a real level and charging flag.
+    Behind the dongle a zero ``online`` really means asleep, so the default
+    keeps refusing it.
     """
     r = list(resp or [])
     if len(r) < 12:
@@ -133,8 +139,10 @@ def parse_report(resp) -> Optional[Reading]:
     if len(r) < i + 12 or r[i] != 0x15:
         return None
     level, charging, full, online = r[i + 8], r[i + 9], r[i + 10], r[i + 11]
-    if not online or not 0 < level <= 100:
-        return None                  # asleep (or off): no level, keep the last one
+    if not 0 < level <= 100:
+        return None                  # asleep/off (level 0) or a bad reply
+    if not online and not allow_offline:
+        return None                  # asleep behind the dongle: keep the last one
     return level, bool(charging or full)
 
 
@@ -163,7 +171,7 @@ class NinjutsoProvider(Provider):
         self._last_v3: Optional[Tuple[int, bool, float]] = None
 
     # --- Sora V2 (Nordic) ---
-    def _read(self, path) -> Optional[Reading]:
+    def _read(self, path, allow_offline: bool = False) -> Optional[Reading]:
         dev = hid.device()
         try:
             dev.open_path(path)
@@ -185,7 +193,7 @@ class NinjutsoProvider(Provider):
                 except (OSError, ValueError) as e:
                     self._diag.append(f"    get: {e}")
                     continue
-                res = parse_report(resp)
+                res = parse_report(resp, allow_offline=allow_offline)
                 if res is not None:
                     self._diag.append(f"    reply: {hexdump(resp, 14)}")
                     return res
@@ -228,7 +236,7 @@ class NinjutsoProvider(Provider):
             for d in entries:
                 self._diag.append(f"  iface={d.get('interface_number')} usage="
                                   f"{d.get('usage_page', 0):04x}:{d.get('usage', 0):04x}")
-                got = self._read(d["path"])
+                got = self._read(d["path"], allow_offline=(conn == "cable"))
                 if got is not None:
                     break
             if got is not None:

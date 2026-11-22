@@ -137,6 +137,19 @@ class ParseReportTest(unittest.TestCase):
         self.assertEqual(N.parse_report(base + [0x41, 0x01, 0x00, 0x01] + [0] * 19), (65, True))
         self.assertEqual(N.parse_report(base + [0x64, 0x00, 0x01, 0x01] + [0] * 19), (100, True))
 
+    def test_the_cable_charging_reply_with_online_zero_is_read(self):
+        # Byte-for-byte the reply the Sora V2 on its cable gave while charging:
+        # 98 %, charging, online stays 0 because there is no radio link.
+        raw = [0x05, 0x15, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+               0x62, 0x01, 0x00, 0x00] + [0x00] * 19
+        self.assertIsNone(N.parse_report(raw))
+        self.assertEqual(N.parse_report(raw, allow_offline=True), (98, True))
+
+    def test_a_zero_level_is_refused_even_on_the_cable(self):
+        base = [0x05, 0x15, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00]
+        self.assertIsNone(N.parse_report(base + [0x00, 0x01, 0x00, 0x00] + [0] * 19,
+                                         allow_offline=True))
+
     def test_a_buffer_without_the_report_id_is_read_too(self):
         raw = [0x15, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x50,
                0x00, 0x00, 0x01] + [0x00] * 20
@@ -249,10 +262,18 @@ class PollTest(PollBase):
         dongle = sora_entries()
         cable = sora_entries(0xAE12, b"cable")
         cols = {**self.cols(dongle, answer=(0, 0, 0, 0)),
-                **self.cols(cable, answer=(88, 1, 0, 1))}
+                **self.cols(cable, answer=(88, 1, 0, 0))}
         res = self.poll(dongle + cable, cols)
         self.assertEqual([(r.level, r.charging) for r in res], [(88, True)])
         self.assertFalse(any(c.sent for p, c in cols.items() if p.startswith(b"dongle")))
+
+    def test_cable_charging_is_not_reported_as_asleep(self):
+        # The real cable reply: level 98, charging 1, online 0.
+        entries = sora_entries(0xAE12, b"cable")
+        res = self.poll(entries, self.cols(entries, answer=(98, 1, 0, 0)))
+        self.assertEqual([(r.level, r.charging, r.online) for r in res],
+                         [(98, True, True)])
+        self.assertEqual([], [l for l in self.provider.diagnostics() if "asleep" in l])
 
     def test_sleeping_mouse_keeps_its_last_level_greyed(self):
         entries = sora_entries()

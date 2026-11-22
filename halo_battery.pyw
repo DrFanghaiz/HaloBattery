@@ -43,7 +43,7 @@ from typing import Callable, Dict, List, Optional, Set
 
 APP_NAME = "HaloBattery"
 APP_TITLE = "Halo Battery"
-VERSION = "1.17.0"
+VERSION = "1.17.1"
 PRETEND_VERSION = ""             # --pretend-version 1.0.0: test the updater with a built copy
 LEGACY_NAME = "BatteryTray"      # the app's previous name (settings and autostart are migrated)
 
@@ -96,6 +96,32 @@ def _calculate_data_dir(base_dir: str, appdata_dir: Optional[str] = None):
     return False, os.path.join(appdata_dir, APP_NAME)
 
 
+def _usable_data_dir(folder: str) -> bool:
+    """Create `folder` if needed and prove a file can be written there."""
+    try:
+        os.makedirs(folder, exist_ok=True)
+    except OSError:
+        return False
+    return _writable(folder)
+
+
+def _ensure_data_dir(requested: str, portable: bool, base_dir: str):
+    """Return a writable data folder instead of dying when %APPDATA% is refused.
+
+    A locked-down profile can deny `%APPDATA%\\HaloBattery`; the app used to show
+    an unhandled `PermissionError` before the first window existed. Prefer the
+    requested folder, then the app's own folder (portable), then the user profile.
+    """
+    if _usable_data_dir(requested):
+        return portable, requested
+    if _usable_data_dir(base_dir):
+        return True, base_dir
+    fallback = os.path.join(os.path.expanduser("~"), APP_NAME)
+    if _usable_data_dir(fallback):
+        return False, fallback
+    return portable, requested
+
+
 def _data_base_dir(argv: List[str]) -> str:
     """The folder whose portable.txt decides where the data goes. The copy that
     finishes an update (--finish-update) runs from %TEMP%, so it uses the folder of the
@@ -110,7 +136,11 @@ def _data_base_dir(argv: List[str]) -> str:
 DATA_BASE_DIR = _data_base_dir(sys.argv)
 PORTABLE_REQUESTED = os.path.exists(os.path.join(DATA_BASE_DIR, PORTABLE_MARKER))
 PORTABLE, DATA_DIR = _calculate_data_dir(DATA_BASE_DIR)
-os.makedirs(DATA_DIR, exist_ok=True)
+PORTABLE, DATA_DIR = _ensure_data_dir(DATA_DIR, PORTABLE, DATA_BASE_DIR)
+try:
+    os.makedirs(DATA_DIR, exist_ok=True)
+except OSError:
+    pass
 CONFIG_PATH = os.path.join(DATA_DIR, "config.json")
 LOG_PATH = os.path.join(DATA_DIR, "halo_battery.log")
 DIAG_PATH = os.path.join(DATA_DIR, "diagnostics.txt")
@@ -119,9 +149,13 @@ STATUS_PATH = os.path.join(DATA_DIR, "status.json")
 
 log = logging.getLogger("halo_battery")
 log.setLevel(logging.INFO)
-_fh = RotatingFileHandler(LOG_PATH, maxBytes=512_000, backupCount=1, encoding="utf-8")
-_fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
-log.addHandler(_fh)
+try:
+    _fh = RotatingFileHandler(LOG_PATH, maxBytes=512_000, backupCount=1, encoding="utf-8")
+    _fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    log.addHandler(_fh)
+except OSError:
+    # A locked-down profile can refuse the log file too; the app still has to start.
+    log.addHandler(logging.NullHandler())
 if PORTABLE_REQUESTED and not PORTABLE:
     log.warning("%s found, but %s cannot be written: settings and the log stay in %s",
                 PORTABLE_MARKER, BASE_DIR, DATA_DIR)

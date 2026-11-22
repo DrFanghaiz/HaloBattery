@@ -263,6 +263,18 @@ Claimed from [#304](https://github.com/HeyOkay/HaloBattery/issues/304)'s collect
 
 The same feature report exchange as the WLmouse and G-Wolves mice (`00 00 02 02 00 83` out, `a1 00 02 02 00 83 <charging> <battery %>` back), on the vendor collection `ffff:0000` of interface 2 only; protocol from Sheroune/lamzu-battery-monitory (MIT). Confirmed on a Maya X on its 8K dongle
 
+### Ninjutso Sora V2
+
+**Connection:** 8K dongle (1915:AE8C; AE1C also claimed from the reference) or USB cable (1915:AE12; AE11 also claimed)
+
+A 32-byte HID feature report, id 5, on the vendor collection `ffa0:0001` of interface 1, from Ninjutso's own web driver as reverse-engineered by Fan4Metal/mouse_tray (MIT). Request `05 15 00 00 01 00 ...`; reply `05 15 00 00 01 00 00 00 00 <level> <charging> <full> <online>`, with the level in byte 9, charging in byte 10, fully charged in byte 11 and the dongle's online flag in byte 12. Behind the dongle `online = 0` means asleep; on the cable the byte stays 0 even while charging because there is no radio link, so the cable path accepts a valid level with `online = 0`. **Confirmed on hardware** on both transports: the receiver replied 98 %, not charging, and the cable replied 98 %, charging, with `online = 0` (2026-11-22).
+
+### Ninjutso Sora V3
+
+**Connection:** 8K receiver (093A:EB02) or USB cable (093A:E010); EB01/E020 and EB03/E021 also claimed
+
+A PixArt chipset with a different protocol from Ninjutso's web driver: feature report 6, a 15-byte payload, on the `ff01` collection; the 64-byte reply echoes the command in byte 1 and carries the value in byte 8. Command 19 reports the receiver sees the mouse awake, 18 the level and 17 the charging state (`2` was measured while charging). **Confirmed on hardware** on the receiver and on the cable.
+
 ### MCHOSE A5 Pro Max
 
 **Connection:** 1K receiver (2023:F013), 4K receiver (2023:F015) or USB cable (2023:F019)

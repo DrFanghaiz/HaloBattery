@@ -58,6 +58,20 @@ class PortableModeTest(unittest.TestCase):
             self.assertEqual(hb._calculate_data_dir(self.app_dir, APPDATA),
                              (False, os.path.join(APPDATA, "HaloBattery")))
 
+    def test_refused_appdata_falls_back_to_the_app_folder(self):
+        requested = os.path.join(self.app_dir, "locked", "HaloBattery")
+        real_makedirs = os.makedirs
+
+        def fake_makedirs(path, exist_ok=False):
+            if os.path.abspath(path) == os.path.abspath(requested):
+                raise PermissionError(13, "denied", path)
+            return real_makedirs(path, exist_ok=exist_ok)
+
+        with mock.patch.object(hb.os, "makedirs", side_effect=fake_makedirs):
+            portable, folder = hb._ensure_data_dir(requested, False, self.app_dir)
+        self.assertTrue(portable)
+        self.assertEqual(folder, self.app_dir)
+
     def test_writable_check(self):
         self.assertTrue(hb._writable(self.app_dir))
         self.assertFalse(hb._writable(os.path.join(self.app_dir, "missing")))

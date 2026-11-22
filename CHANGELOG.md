@@ -6,11 +6,15 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.17.1] - 2026-11-22
+
 ### Added
 - **Ninjutso Sora V2 / V3** on their receivers and cables (`1915:AE8C` / `1915:AE12`, `093A:EB02` / `093A:E010`): one provider for both generations, feature report 5 on the V2 and PixArt report 6 on the V3. Verified on hardware.
 - **LAMZU Atlantis Mini (Champion Edition)** on its 1K receiver (`3554:F50D`): the Compx picture was already handled for the Thorn family, the 1K receiver id was missing.
 
 ### Fixed
+- **A wired Sora V2 no longer shows as asleep while charging**: the cable reply keeps byte 12 (`online`) at 0 because there is no radio link, but it still carries the level and charging flag. The cable path now accepts a valid level with that byte zero; a dongle reply with `online = 0` still means asleep.
+- **Start-up survives a refused `%APPDATA%\\HaloBattery`**: when the profile cannot create the data folder (or the app has no portable marker), the data directory falls back to the app folder and then to the user profile instead of showing an unhandled `PermissionError`; a refused log file is tolerated too.
 - Quiet while gaming no longer treats `QUNS_BUSY` from shells and remote-control tools that are not full screen as a game (the app polled every 5 minutes on a normal desktop).
 - A greyed LAMZU reading now wakes on mouse input again (`wake_on_input`).
 - Single instance: a failed `CreateMutexW` under a restricted token is logged and the app starts instead of silently claiming to be the only copy.
