@@ -30,8 +30,8 @@ except ImportError:          # pragma: no cover
     hid = None
 
 _lock = threading.Lock()
-_cache: Dict[int, Tuple[FrozenSet[str], List[dict]]] = {}
-_short_at: Dict[int, float] = {}      # vid -> when a short result was last re-read
+_cache: Dict[object, Tuple[FrozenSet[str], List[dict]]] = {}
+_short_at: Dict[object, float] = {}      # (vid, pids) -> when a short result was last re-read
 _stats = {"hidapi": 0, "cached": 0, "skipped": 0, "short": 0}
 
 # hidapi opens every device it lists to read its attributes, so it can return fewer entries
@@ -44,10 +44,15 @@ SHORT_RETRY = 30.0
 # USB paths carry the vendor id as "VID_054C"; Bluetooth HID paths use
 # "VID&0002054C" (eight hex digits, the vendor id is the low four). Match both.
 _VID_RE = re.compile(r"vid[_&]([0-9a-f]{4,8})")
+_PID_RE = re.compile(r"pid[_&]([0-9a-f]{4,8})")
 
 
 def _path_vids(path: str) -> FrozenSet[int]:
     return frozenset(int(m.group(1)[-4:], 16) for m in _VID_RE.finditer(path))
+
+
+def _path_pids(path: str) -> FrozenSet[int]:
+    return frozenset(int(m.group(1)[-4:], 16) for m in _PID_RE.finditer(path))
 
 
 class _GUID(ctypes.Structure):
@@ -101,10 +106,19 @@ def vendor_present(paths: FrozenSet[str], vid: int) -> bool:
     return any(vid in _path_vids(p) for p in paths)
 
 
-def paths_for(paths: FrozenSet[str], vid: int) -> List[str]:
-    """The present interfaces of one vendor. hidapi lists one entry per collection, so this
-    is the number of entries a complete result has."""
-    return [p for p in paths if vid in _path_vids(p)]
+def product_present(paths: FrozenSet[str], vid: int, pids) -> bool:
+    """True when one of `pids` of `vid` is present, without opening a device."""
+    wanted = {int(p) for p in pids}
+    return any(vid in _path_vids(p) and (_path_pids(p) & wanted) for p in paths)
+
+
+def paths_for(paths: FrozenSet[str], vid: int, pids=None) -> List[str]:
+    """The present interfaces of one vendor (optionally only some product ids).
+    hidapi lists one entry per collection, so this is the number of entries a
+    complete result has."""
+    wanted = {int(p) for p in pids} if pids else None
+    return [p for p in paths if vid in _path_vids(p)
+            and (wanted is None or (_path_pids(p) & wanted))]
 
 
 def present_vids(paths: FrozenSet[str]) -> FrozenSet[int]:
@@ -114,34 +128,48 @@ def present_vids(paths: FrozenSet[str]) -> FrozenSet[int]:
     return frozenset(out)
 
 
-def enumerate(vid: int = 0) -> List[dict]:  # noqa: A001  (mirrors hid.enumerate)
-    """hid.enumerate(vid), re-run only when the set of HID devices changes."""
+def enumerate(vid: int = 0, pids=None) -> List[dict]:  # noqa: A001  (mirrors hid.enumerate)
+    """hid.enumerate(vid), re-run only when the set of HID devices changes.
+
+    ``pids`` is optional: when it is given, hidapi is not opened at all unless
+    one of those product ids is present, and its result is filtered to them.
+    This is the cheap path for a vendor id shared with an unrelated device whose
+    stuck collection would otherwise make hid.enumerate() wait a minute.
+    """
     if hid is None:
         return []
     paths = interface_paths()
     if paths is None:                        # no cfgmgr32: nothing to compare against
         _stats["hidapi"] += 1
         return hid.enumerate(vid)
+    wanted = tuple(sorted({int(p) for p in pids})) if pids else ()
+    cache_key = (vid, wanted)
     with _lock:
         if vid and not vendor_present(paths, vid):
-            _cache[vid] = (paths, [])
+            _cache[cache_key] = (paths, [])
             _stats["skipped"] += 1
             return []
-        hit = _cache.get(vid)
+        if wanted and not product_present(paths, vid, wanted):
+            _cache[cache_key] = (paths, [])
+            _stats["skipped"] += 1
+            return []
+        hit = _cache.get(cache_key)
         if hit is not None and hit[0] == paths:
             # A short result means hidapi could not open one of the vendor's collections and
             # left it out. Serving that from the cache would hide the collection for the life
             # of the process, so ask again - rate limited, because a permanently unopenable
             # collection would otherwise cost a full enumeration on every single call.
-            short = len(hit[1]) < len(paths_for(paths, vid))
-            if not short or time.time() - _short_at.get(vid, 0.0) < SHORT_RETRY:
+            short = len(hit[1]) < len(paths_for(paths, vid, wanted))
+            if not short or time.time() - _short_at.get(cache_key, 0.0) < SHORT_RETRY:
                 _stats["cached"] += 1
                 return list(hit[1])
-            _short_at[vid] = time.time()
+            _short_at[cache_key] = time.time()
             _stats["short"] += 1
         result = hid.enumerate(vid)
+        if wanted:
+            result = [d for d in result if d.get("product_id") in wanted]
         _stats["hidapi"] += 1
-        _cache[vid] = (paths, result)
+        _cache[cache_key] = (paths, result)
         return list(result)
 
 

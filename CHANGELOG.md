@@ -6,6 +6,14 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.17.2] - 2026-11-22
+
+### Fixed
+- **The LAMZU Atlantis Mini cable is named correctly**: the cable PID `3554:F50F` is shared with the Thorn; the provider now uses the product string (`LAMZU Atlantis MINI Champion`) to show "LAMZU Atlantis Mini (wired)" instead of "LAMZU Thorn (wired)".
+- **The personal update/What's new source matches this fork**: releases are read from `DrFanghaiz/HaloBattery` with the `personal-<version>` tag, and `HaloBattery-<version>-personal.zip` is accepted as the update asset, so the What's new window no longer logs a 404.
+- **LAMZU/Compx polling passes product ids to `hidlist.enumerate`**: the fast path can skip hidapi when only an unrelated `3554` device is present, avoiding the possible one-minute block.
+- Added the missing LAMZU Atlantis Mini protocol/device documentation and a real-frame test file.
+
 ## [1.17.1] - 2026-11-22
 
 ### Added

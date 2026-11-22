@@ -105,6 +105,7 @@ class ReleaseTests(unittest.TestCase):
     def test_versions(self):
         self.assertTrue(updates.is_newer("1.15.0", "1.14.0"))
         self.assertTrue(updates.is_newer("v1.14.1", "1.14"))
+        self.assertTrue(updates.is_newer("personal-1.17.1", "1.17.0"))
         self.assertFalse(updates.is_newer("1.14.0", "1.14.0"))
         self.assertFalse(updates.is_newer("junk", "1.14.0"))
 
@@ -571,11 +572,26 @@ class AppUpdateTests(unittest.TestCase):
 
 
 class UpstreamRepositoryTests(unittest.TestCase):
-    def test_upstream_is_the_update_source(self):
-        self.assertEqual(updates.REPO, "HeyOkay/HaloBattery")
+    def test_personal_repository_is_the_update_source(self):
+        self.assertEqual(updates.REPO, "DrFanghaiz/HaloBattery")
         for url in (updates.API_URL, updates.TAG_URL, updates.RELEASES_URL):
-            self.assertIn("HeyOkay/HaloBattery", url)
+            self.assertIn("DrFanghaiz/HaloBattery", url)
             self.assertNotIn("ahmedkhursheed23", url)
+        self.assertIn("personal-", updates.TAG_URL)
+
+    def test_a_personal_release_and_asset_are_parsed(self):
+        rel = updates.parse_release({
+            "tag_name": "personal-1.17.1",
+            "html_url": "https://github.com/DrFanghaiz/HaloBattery/releases/tag/personal-1.17.1",
+            "body": "notes",
+            "published_at": "2026-11-22T14:56:44Z",
+            "assets": [{"name": "HaloBattery-1.17.1-personal.zip",
+                        "browser_download_url": "https://example.invalid/personal.zip",
+                        "size": 123, "digest": "sha256:" + "a" * 64}],
+        })
+        self.assertEqual(rel.version, "1.17.1")
+        self.assertTrue(rel.zip_url.endswith("personal.zip"))
+        self.assertEqual(rel.zip_size, 123)
 
     def test_an_offer_cached_from_the_fork_is_dropped(self):
         cfg = {"update_repo": "ahmedkhursheed23/HaloBattery", "update_latest": "99.0", "update_url": "https://github.com/ahmedkhursheed23/HaloBattery/releases/latest",

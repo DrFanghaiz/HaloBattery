@@ -45,9 +45,10 @@ from typing import Callable, List, Optional, Tuple
 
 log = logging.getLogger("halo_battery")
 
-REPO = "HeyOkay/HaloBattery"
+REPO = "DrFanghaiz/HaloBattery"
+TAG_PREFIX = "personal-"          # this personal fork tags releases personal-<version>
 API_URL = f"https://api.github.com/repos/{REPO}/releases/latest"
-TAG_URL = f"https://api.github.com/repos/{REPO}/releases/tags/v{{version}}"
+TAG_URL = f"https://api.github.com/repos/{REPO}/releases/tags/{TAG_PREFIX}{{version}}"
 RELEASES_URL = f"https://github.com/{REPO}/releases/latest"
 CHECK_EVERY = 24 * 3600          # seconds between checks
 # settings that remember what the last check found; they belong to one repository
@@ -96,10 +97,10 @@ class Release:
 
 
 def parse_version(text: str) -> Optional[Tuple[int, ...]]:
-    """'v1.11.0' / '1.11.0' -> (1, 11, 0); anything else -> None."""
+    """'v1.11.0' / '1.11.0' / 'personal-1.17.1' -> (1, 11, 0); anything else -> None."""
     if not isinstance(text, str):          # a hand-edited settings file can hold any JSON
         return None
-    m = re.match(r"^\s*v?(\d+(?:\.\d+)*)\s*$", text)
+    m = re.match(r"^\s*(?:personal-)?v?(\d+(?:\.\d+)*)\s*$", text)
     if not m:
         return None
     return tuple(int(p) for p in m.group(1).split("."))
@@ -121,14 +122,17 @@ def parse_release(data: dict) -> Release:
     tag = str(data.get("tag_name") or "")
     if parse_version(tag) is None:
         raise ValueError(f"unexpected tag name {tag!r}")
-    version = tag.strip().lstrip("vV")
+    version = tag.strip()
+    if version.lower().startswith(TAG_PREFIX):
+        version = version[len(TAG_PREFIX):]
+    version = version.lstrip("vV")
     rel = Release(version=version, url=str(data.get("html_url") or RELEASES_URL),
                   notes=str(data.get("body") or ""),
                   published=str(data.get("published_at") or "")[:10])
-    want = f"halobattery-{version}.zip"
+    want = {f"halobattery-{version}.zip", f"halobattery-{version}-personal.zip"}
     assets = data.get("assets")
     for asset in assets if isinstance(assets, list) else []:
-        if not isinstance(asset, dict) or str(asset.get("name") or "").lower() != want:
+        if not isinstance(asset, dict) or str(asset.get("name") or "").lower() not in want:
             continue
         rel.zip_url = str(asset.get("browser_download_url") or "")
         try:

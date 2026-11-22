@@ -71,6 +71,16 @@ class HidlistTest(unittest.TestCase):
         self.assertEqual(len(hidlist.paths_for(PATHS, VID)), 10)
         self.assertEqual(hidlist.paths_for(PATHS, 0x054C), [])
 
+    def test_product_id_filter_skips_the_vendor_when_only_another_pid_is_present(self):
+        self.assertEqual(hidlist.enumerate(VID, [0x0001]), [])
+        self.assertEqual(self.enumerations, 0)        # hidapi was not opened
+
+    def test_product_id_filter_and_product_present(self):
+        self.assertTrue(hidlist.product_present(PATHS, VID, [0x0000]))
+        self.assertFalse(hidlist.product_present(PATHS, VID, [0x0001]))
+        self.assertEqual(len(hidlist.paths_for(PATHS, VID, [0x0000])), 10)
+        self.assertEqual(hidlist.paths_for(PATHS, VID, [0x0001]), [])
+
     def test_the_short_retry_is_well_clear_of_the_poll_interval(self):
         self.assertGreaterEqual(self._saved[2], 10.0)
 

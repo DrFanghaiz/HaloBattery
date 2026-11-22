@@ -105,7 +105,7 @@ class LamzuProvider(Provider):
         if hid is None:
             return []
         try:
-            infos = hidlist.enumerate(LAMZU_VID)
+            infos = hidlist.enumerate(LAMZU_VID, PIDS)
         except Exception as e:  # pragma: no cover
             log.warning("hid.enumerate(lamzu): %s", e)
             return []
@@ -160,6 +160,20 @@ THORN_KEY = "lamzu:3554f510"
 THORN_ASLEEP_KEEP = 300
 
 
+def atlantis_name(pid: int, entries: List[dict]) -> str:
+    """The cable PID 0xF50F is shared by Thorn and Atlantis, so use the product string.
+
+    The Atlantis Mini reports 'LAMZU Atlantis MINI Champion' on its cable; a Thorn
+    reports 'LAMZU THORN'. Without this, an Atlantis Mini on the cable was labelled
+    as a Thorn (the 1.16 line had a separate Atlantis-only table and could name it
+    statically; the 1.17 shared table lost that).
+    """
+    product = (entries[0].get("product_string") or "").strip() if entries else ""
+    if pid == 0xF50F and "ATLANTIS" in product.upper():
+        return "LAMZU Atlantis Mini (wired)"
+    return ATLANTIS_PIDS[pid]
+
+
 class LamzuAtlantisProvider(Provider):
     name = "lamzu"
 
@@ -212,7 +226,7 @@ class LamzuAtlantisProvider(Provider):
     def poll(self) -> List[DeviceStatus]:
         self._diag = []
         try:
-            infos = [d for d in hidlist.enumerate(COMPX_VID)
+            infos = [d for d in hidlist.enumerate(COMPX_VID, ATLANTIS_PIDS)
                      if d.get("product_id") in ATLANTIS_PIDS]
         except Exception as e:  # pragma: no cover
             log.warning("hid.enumerate(lamzu atlantis): %s", e)
@@ -225,7 +239,7 @@ class LamzuAtlantisProvider(Provider):
         # Ask the cable first; its power flag is how the report signals charging.
         for pid in sorted(groups, key=lambda p: p != 0xF50F):
             group = groups[pid]
-            name = ATLANTIS_PIDS[pid]
+            name = atlantis_name(pid, group)
             self._diag.append(f"[Lamzu Thorn] pid=3554:{pid:04x} '{name}'")
             d = self._pick_compx(group)
             if d is None:

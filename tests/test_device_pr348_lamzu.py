@@ -86,13 +86,13 @@ class AtlantisProviderTest(unittest.TestCase):
                 pass
         self.device = FakeDevice
         L.hid = types.SimpleNamespace(device=lambda: self.device())
-        L.hidlist = types.SimpleNamespace(enumerate=lambda vid: list(self.entries)
+        L.hidlist = types.SimpleNamespace(enumerate=lambda vid=0, pids=None: list(self.entries)
                                           if vid == L.COMPX_VID else [])
 
     def tearDown(self):
         L.hid, L.hidlist, L.compx_output_length = self._saved
 
-    def add_mouse(self, pid, prefix):
+    def add_mouse(self, pid, prefix, product="LAMZU THORN"):
         shapes = [(0, 0x0001, 0x0006), (1, 0xFF05, 0), (1, 0xFF03, 0),
                   (1, 0x000C, 1), (1, 0x0001, 0x80), (1, 0xFF02, 2),
                   (1, 0xFF04, 2), (2, 0x0001, 2)]
@@ -100,7 +100,7 @@ class AtlantisProviderTest(unittest.TestCase):
             self.entries.append({"vendor_id": L.COMPX_VID, "product_id": pid,
                                  "interface_number": iface, "usage_page": page,
                                  "usage": usage, "path": f"{prefix}-{n}".encode(),
-                                 "product_string": "LAMZU THORN"})
+                                 "product_string": product})
 
     @staticmethod
     def power_reply(level, charging=0, millivolts=0):
@@ -123,7 +123,21 @@ class AtlantisProviderTest(unittest.TestCase):
         self.add_mouse(0xF50F, "cable")
         self.replies = [self.power_reply(95, 1, 4205)]
         found = L.LamzuAtlantisProvider().poll()
-        self.assertEqual([("lamzu:3554f510", "LAMZU Thorn (wired)", 95, True, "lamzu")],
+        self.assertEqual([(L.THORN_KEY, "LAMZU Thorn (wired)", 95, True, "lamzu")],
+                         [(s.key, s.name, s.level, s.charging, s.source) for s in found])
+
+    def test_atlantis_receiver_is_reported_as_atlantis(self):
+        self.add_mouse(0xF50D, "receiver", "LAMZU 1K Champion Receiver")
+        self.replies = [self.power_reply(95, 0, 4076)]
+        found = L.LamzuAtlantisProvider().poll()
+        self.assertEqual([(L.THORN_KEY, "LAMZU Atlantis Mini (1K receiver)", 95, False, "lamzu")],
+                         [(s.key, s.name, s.level, s.charging, s.source) for s in found])
+
+    def test_atlantis_cable_is_named_atlantis_not_thorn(self):
+        self.add_mouse(0xF50F, "cable", "LAMZU Atlantis MINI Champion")
+        self.replies = [self.power_reply(95, 1, 4205)]
+        found = L.LamzuAtlantisProvider().poll()
+        self.assertEqual([(L.THORN_KEY, "LAMZU Atlantis Mini (wired)", 95, True, "lamzu")],
                          [(s.key, s.name, s.level, s.charging, s.source) for s in found])
 
     def test_cable_wins_when_receiver_and_cable_are_both_present(self):

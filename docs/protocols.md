@@ -263,6 +263,17 @@ Claimed from [#304](https://github.com/HeyOkay/HaloBattery/issues/304)'s collect
 
 The same feature report exchange as the WLmouse and G-Wolves mice (`00 00 02 02 00 83` out, `a1 00 02 02 00 83 <charging> <battery %>` back), on the vendor collection `ffff:0000` of interface 2 only; protocol from Sheroune/lamzu-battery-monitory (MIT). Confirmed on a Maya X on its 8K dongle
 
+### LAMZU Atlantis Mini (Champion Edition)
+
+**Connection:** 1K "Champion" receiver (3554:F50D) or USB cable (3554:F50F)
+
+A different protocol from the Maya X in the same file: this mouse is Compx hardware (both its receiver and its cable report manufacturer "compx" under vendor id `0x3554`, the id the Pulsar / ATK / VXE mice use), so it answers the same 17-byte Compx frame as the Pulsar / ATK / VXE row instead of a feature report: report id `0x08`, command `0x04`, checksum `0x55 - sum(bytes 0-15)`, written as a 17-byte **output** report to the vendor collection `ff02:0002` of interface 1, and the reply read back on the same handle (interrupt IN - there is no feature report to read on this device at all):
+
+    request  08 04 00 00 00 00 00 00 00 00 00 00 00 00 00 00 49
+    reply    08 04 00 00 00 02 5f 00 0f ec 00 00 00 00 00 00 ed
+
+Level in byte 6 (`0x5f` = 95 %), charging flag in byte 7 (0 = on battery, 1 = on the cable), millivolts big-endian in bytes 8-9 (`0x0fec` = 4076). The wired and wireless collection lists are identical (eight collections, `ff02:0002` is the only one with a 17-byte output report), so one code path serves both. The cable PID `0xF50F` is shared with the Thorn; the provider uses the product string (`LAMZU Atlantis MINI Champion`) to name an Atlantis Mini on the cable instead of calling it a Thorn. **Verified on hardware** on both transports; the last readings were 95 %, 4076 mV on the receiver and 95 %, charging, 4205 mV on the cable.
+
 ### Ninjutso Sora V2
 
 **Connection:** 8K dongle (1915:AE8C; AE1C also claimed from the reference) or USB cable (1915:AE12; AE11 also claimed)
