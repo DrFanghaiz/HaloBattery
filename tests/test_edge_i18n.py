@@ -97,6 +97,19 @@ class FormatLeftTests(unittest.TestCase):
             with self.subTest(seconds=seconds):
                 self.assertEqual(history.format_left(seconds), i18n.format_left(seconds))
 
+    def test_every_language_renders_a_range(self):
+        for code in i18n.LANGUAGES:
+            with self.subTest(language=code):
+                text = i18n.format_left_range(2 * 3600, 5 * 3600, language=code)
+                self.assertTrue(text.strip())
+                self.assertNotRegex(text, r"[{}]")
+
+    def test_english_range_thresholds(self):
+        self.assertEqual(i18n.format_left_range(2 * 3600, 5 * 3600),
+                         "about 2–5 h of use left")
+        self.assertEqual(i18n.format_left_range(60 * 3600, 80 * 3600),
+                         "about 2–3 days of use left")
+
 
 class TooltipTests(unittest.TestCase):
     def test_short_text_is_unchanged(self):

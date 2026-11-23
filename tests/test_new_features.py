@@ -333,7 +333,7 @@ class TimeLeftTooltipTests(HideRenameTestCase):
     def test_tooltip_shows_time_left(self):
         app = self.app_with_history()
         text = hb.describe(mouse(85), "Viper", app.time_left_text(mouse(85)))
-        self.assertRegex(text, r"^Viper: 85%, about 1\d h of use left$")
+        self.assertRegex(text, r"^Viper: 85%, about 1\d–1\d h of use left$")
 
     def test_not_while_charging_or_asleep(self):
         app = self.app_with_history()

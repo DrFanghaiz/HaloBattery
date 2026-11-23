@@ -154,6 +154,8 @@ MESSAGES = {
     "duration.days": {
         "other": "あと約 {count} 日使用できます"
     },
+    "duration.hours_range": "あと約 {low}–{high} 時間使用できます",
+    "duration.days_range": "あと約 {low}–{high} 日使用できます",
     "notification.low_title": "バッテリー残量低下",
     "notification.low": "{name}: バッテリー残量 {level}%。充電してください。",
     "notification.low_approx": "{name}: バッテリー残量が低下しています。充電してください。",

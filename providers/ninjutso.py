@@ -247,13 +247,13 @@ class NinjutsoProvider(Provider):
             level, charging = reading
             self._last = (level, charging, time.time())
             return [DeviceStatus("ninjutso", NAME, level, charging, True, "ninjutso",
-                                 kind="mouse")]
+                                 kind="mouse", transport=conn)]
         if self._last and time.time() - self._last[2] < ASLEEP_KEEP:
             level, charging, _ = self._last
             self._diag.append("  asleep: keeping the last level greyed until it answers"
                               " (or new input wakes it)")
             return [DeviceStatus("ninjutso", NAME, level, charging, False, "ninjutso",
-                                 kind="mouse", wake_on_input=True)]
+                                 kind="mouse", wake_on_input=True, transport=conn)]
         return []
 
     # --- Sora V3 (PixArt) ---
@@ -351,13 +351,13 @@ class NinjutsoProvider(Provider):
             if online and 0 < level <= 100:
                 self._last_v3 = (level, charging, time.time())
                 return [DeviceStatus("ninjutso-v3", V3_NAME, level, charging, True,
-                                     "ninjutso", kind="mouse")]
+                                     "ninjutso", kind="mouse", transport=conn)]
             self._diag.append("  mouse not awake (online=0) or a level out of range: "
                               "keeping the last level greyed")
         if self._last_v3 and time.time() - self._last_v3[2] < ASLEEP_KEEP:
             level, charging, _ = self._last_v3
             return [DeviceStatus("ninjutso-v3", V3_NAME, level, charging, False,
-                                 "ninjutso", kind="mouse", wake_on_input=True)]
+                                 "ninjutso", kind="mouse", wake_on_input=True, transport=conn)]
         return []
 
     # --- provider ---

@@ -151,6 +151,8 @@ MESSAGES = {
                        "other": "environ {count} heures d’utilisation restantes"},
     "duration.days": {"one": "environ {count} jour d’utilisation restant",
                       "other": "environ {count} jours d’utilisation restants"},
+    "duration.hours_range": "environ {low}–{high} h d’utilisation restante",
+    "duration.days_range": "environ {low}–{high} jours d’utilisation restants",
     "notification.low_title": "Batterie faible",
     "notification.low": "{name} : {level} % restants. Pensez à recharger.",
     "notification.low_approx": "{name} : batterie faible. Pensez à recharger.",

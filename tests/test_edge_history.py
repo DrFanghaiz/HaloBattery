@@ -38,6 +38,28 @@ class EstimateTests(unittest.TestCase):
         self.assertIsNone(h.rate(K))
         self.assertIsNone(h.seconds_left(K, 50))
 
+    def test_feature_points_keep_metadata_and_are_sampled(self):
+        h = History()
+        h.record(K, 80, False, True, 1000.0, model="Mouse", source="ninjutso",
+                 transport="dongle", idle=5.0)
+        h.record(K, 79, False, True, 1100.0)                  # too soon for a point
+        h.record(K, 78, False, True, 1400.0, idle=120.0)
+        d = h.devices[K]
+        self.assertEqual(d["model"], "Mouse")
+        self.assertEqual(d["source"], "ninjutso")
+        self.assertEqual(d["transport"], "dongle")
+        self.assertEqual(len(d["points"]), 2)
+        self.assertEqual(d["points"][-1][1:], [78, 0, 1, 120.0])
+
+    def test_seconds_left_range_brackets_the_estimate(self):
+        h = History()
+        drain(h)
+        central = h.seconds_left(K, 70)
+        bounds = h.seconds_left_range(K, 70)
+        self.assertIsNotNone(bounds)
+        self.assertLessEqual(bounds[0], central)
+        self.assertGreaterEqual(bounds[1], central)
+
     def test_unknown_device_has_no_estimate(self):
         self.assertIsNone(History().rate("nobody"))
         self.assertIsNone(History().seconds_left("nobody", 50))

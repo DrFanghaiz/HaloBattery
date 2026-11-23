@@ -6,6 +6,11 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.17.3] - 2026-11-24
+
+### Changed
+- **A more honest time-left estimate**: the history now records feature points (level, charging/online, transport, model and input-idle time) alongside the existing samples, and the tooltip shows a robust low–high range (e.g. "2–3 days") instead of one over-confident day count. The estimate also waits for 1 hour of use and a 5-point drop before appearing.
+
 ## [1.17.2] - 2026-11-22
 
 ### Fixed

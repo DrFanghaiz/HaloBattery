@@ -154,6 +154,8 @@ MESSAGES = {
     "duration.days": {
         "other": "約可再使用 {count} 天"
     },
+    "duration.hours_range": "約可再使用 {low}–{high} 小時",
+    "duration.days_range": "約可再使用 {low}–{high} 天",
     "notification.low_title": "電量不足",
     "notification.low": "{name}: 剩餘電量 {level}%。請充電。",
     "notification.low_approx": "{name}: 電量不足。請充電。",

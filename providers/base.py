@@ -33,6 +33,7 @@ class DeviceStatus:
     # Presentation metadata; English approx remains available to diagnostics.
     ui_message: str = ""
     ui_params: dict = field(default_factory=dict)
+    transport: str = ""          # dongle / cable / bluetooth / usb / ... when the provider knows it
 
 
 class Provider:

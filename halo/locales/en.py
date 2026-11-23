@@ -149,6 +149,8 @@ MESSAGES = {
     "duration.less_hour": "less than 1 h of use left",
     "duration.hours": {"one": "about {count} h of use left", "other": "about {count} h of use left"},
     "duration.days": {"one": "about {count} day of use left", "other": "about {count} days of use left"},
+    "duration.hours_range": "about {low}–{high} h of use left",
+    "duration.days_range": "about {low}–{high} days of use left",
     "notification.low_title": "Low battery",
     "notification.low": "{name}: {level}% left. Time to charge.",
     "notification.low_approx": "{name}: battery is low. Time to charge.",

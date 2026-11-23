@@ -136,3 +136,25 @@ def format_left(seconds: float, *, language: str = "en") -> str:
     if hours < 48:
         return translate("duration.hours", language=language, count=round(hours))
     return translate("duration.days", language=language, count=round(hours / 24))
+
+
+def format_left_range(low_seconds: float, high_seconds: float, *,
+                      language: str = "en") -> str:
+    """Format a low/high estimate without pretending it is exact."""
+    low_seconds, high_seconds = sorted((max(0.0, low_seconds), max(0.0, high_seconds)))
+    if high_seconds <= 0:
+        return translate("duration.none", language=language)
+    low_hours, high_hours = low_seconds / 3600.0, high_seconds / 3600.0
+    if high_hours < 1:
+        return translate("duration.less_hour", language=language)
+    if high_hours < 48:
+        low = max(1, round(low_hours))
+        high = max(low, round(high_hours))
+        if low == high:
+            return translate("duration.hours", language=language, count=low)
+        return translate("duration.hours_range", language=language, low=low, high=high)
+    low = max(1, round(low_hours / 24))
+    high = max(low, round(high_hours / 24))
+    if low == high:
+        return translate("duration.days", language=language, count=low)
+    return translate("duration.days_range", language=language, low=low, high=high)

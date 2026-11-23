@@ -163,6 +163,8 @@ MESSAGES = {
     "duration.days": {"one": "alrededor de {count} día de uso restante",
                       "other": "unos {count} días de uso restantes"},
     # Notifications and rename prompt/title adapted from #249.
+    "duration.hours_range": "alrededor de {low}–{high} h de uso restante",
+    "duration.days_range": "alrededor de {low}–{high} días de uso restante",
     "notification.low_title": "Batería baja",
     "notification.low": "{name}: {level}% restante. Es hora de cargar.",
     "notification.low_approx": "{name}: batería baja. Es hora de cargar.",

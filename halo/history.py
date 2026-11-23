@@ -23,10 +23,12 @@ import time
 from typing import Dict, List, Optional
 
 MAX_GAP = 600.0          # s: the most one gap between two readings may add
-MIN_SPAN = 1800.0        # s of use since the charge before an estimate is given
-MIN_DROP = 3             # percentage points dropped since the charge, likewise
+MIN_SPAN = 3600.0        # s of use since the charge before an estimate is given
+MIN_DROP = 5             # percentage points dropped since the charge, likewise
 RESET_RISE = 3           # a rise this large without "charging" means it was charged
 MAX_SAMPLES = 400        # per device; the oldest are dropped
+MAX_POINTS = 288         # per device: 24 h at one point every 5 minutes
+POINT_EVERY = 300.0      # s between feature points
 FORGET_AFTER = 60 * 86400.0   # a device not seen for this long is forgotten
 SAVE_EVERY = 300.0       # s between writes of history.json
 
@@ -70,8 +72,18 @@ class History:
         for key, d in (devices.items() if isinstance(devices, dict) else ()):
             try:
                 samples = [[float(u), int(l)] for u, l in d.get("samples", [])][-MAX_SAMPLES:]
+                points = []
+                for p in d.get("points", []) if isinstance(d.get("points"), list) else []:
+                    if not isinstance(p, list) or len(p) < 5:
+                        continue
+                    points.append([float(p[0]), int(p[1]), int(p[2]), int(p[3]),
+                                   None if p[4] is None else float(p[4])])
+                points = points[-MAX_POINTS:]
                 entry = {"use": float(d.get("use", 0.0)), "last": None,
-                         "seen": float(d.get("seen", now)), "samples": samples}
+                         "seen": float(d.get("seen", now)), "samples": samples,
+                         "points": points, "model": str(d.get("model") or ""),
+                         "source": str(d.get("source") or ""),
+                         "transport": str(d.get("transport") or "")}
             except (AttributeError, OverflowError, TypeError, ValueError):
                 continue                      # a damaged entry: start that device over
             if now - entry["seen"] < FORGET_AFTER:
@@ -97,15 +109,32 @@ class History:
 
     # ---------------- readings
     def record(self, key: str, level: Optional[int], charging: bool, online: bool,
-               now: float, coarse: bool = False) -> None:
+               now: float, coarse: bool = False, *, model: str = "", source: str = "",
+               transport: str = "", idle: Optional[float] = None) -> None:
         """One poll's reading of one device. `coarse`: the device only reports rough
-        steps (XInput, Switch controllers), too rough to measure a rate from."""
+        steps (XInput, Switch controllers), too rough to measure a rate from.
+
+        The optional metadata and `idle` populate the feature points used by a
+        future model; the rate estimate itself still comes from `samples`.
+        """
         if coarse or level is None:
             return
         d = self.devices.get(key)
         if d is None:
-            d = self.devices[key] = {"use": 0.0, "last": None, "seen": now, "samples": []}
+            d = self.devices[key] = {"use": 0.0, "last": None, "seen": now,
+                                     "samples": [], "points": [],
+                                     "model": model, "source": source, "transport": transport}
+        for name, value in (("model", model), ("source", source), ("transport", transport)):
+            if value and d.get(name) != value:
+                d[name] = value
+                self.dirty = True
         d["seen"] = now
+        points = d.setdefault("points", [])
+        if not points or now - points[-1][0] >= POINT_EVERY:
+            points.append([float(now), int(level), int(bool(charging)),
+                           int(bool(online)), None if idle is None else round(float(idle), 1)])
+            del points[:-MAX_POINTS]
+            self.dirty = True
         if charging:
             if d["samples"] or d["use"]:
                 self._reset(d)
@@ -135,8 +164,7 @@ class History:
         self.dirty = True
 
     # ---------------- estimate
-    def rate(self, key: str) -> Optional[float]:
-        """Percentage points used per second of use, or None when not known yet."""
+    def _points(self, key: str):
         d = self.devices.get(key)
         if d is None or len(d["samples"]) < 2:
             return None
@@ -146,8 +174,15 @@ class History:
         last_level = pts[-1][1]
         if d["use"] > pts[-1][0]:
             pts.append([d["use"], last_level])
+        return pts
+
+    def rate(self, key: str) -> Optional[float]:
+        """Percentage points used per second of use, or None when not known yet."""
+        pts = self._points(key)
+        if pts is None:
+            return None
         span = pts[-1][0] - pts[0][0]
-        if span < MIN_SPAN or pts[0][1] - last_level < MIN_DROP:
+        if span < MIN_SPAN or pts[0][1] - pts[-1][1] < MIN_DROP:
             return None
         n = len(pts)
         mean_t = sum(p[0] for p in pts) / n
@@ -158,11 +193,48 @@ class History:
         slope = sum((p[0] - mean_t) * (p[1] - mean_l) for p in pts) / var
         return -slope if slope < 0 else None
 
+    def rate_bounds(self, key: str):
+        """(low, high) percentage-points/second from the sample intervals.
+
+        This is a deliberately simple robust range: the 25th and 75th
+        percentiles of the observed per-interval drain rates. It is used only
+        for the tooltip range; `rate()` stays the central regression.
+        """
+        pts = self._points(key)
+        if pts is None:
+            return None
+        span = pts[-1][0] - pts[0][0]
+        if span < MIN_SPAN or pts[0][1] - pts[-1][1] < MIN_DROP:
+            return None
+        rates = []
+        for (t0, l0), (t1, l1) in zip(pts, pts[1:]):
+            dt = t1 - t0
+            if dt <= 0:
+                continue
+            if l0 > l1:
+                rates.append((l0 - l1) / dt)
+        if len(rates) < 2:
+            return None
+        rates.sort()
+        lo = rates[max(0, int(len(rates) * 0.25) - 1)]
+        hi = rates[min(len(rates) - 1, int(len(rates) * 0.75))]
+        if lo <= 0 or hi <= 0:
+            return None
+        return lo, hi
+
     def seconds_left(self, key: str, level: Optional[int]) -> Optional[float]:
         r = self.rate(key)
         if r is None or level is None:
             return None
         return level / r
+
+    def seconds_left_range(self, key: str, level: Optional[int]):
+        """(low, high) seconds left from the robust interval range, or None."""
+        bounds = self.rate_bounds(key)
+        if bounds is None or level is None:
+            return None
+        lo_rate, hi_rate = bounds
+        return level / hi_rate, level / lo_rate
 
     def report(self) -> List[str]:
         """Lines for the diagnostics report."""

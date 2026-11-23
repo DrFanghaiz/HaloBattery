@@ -43,7 +43,7 @@ from typing import Callable, Dict, List, Optional, Set
 
 APP_NAME = "HaloBattery"
 APP_TITLE = "Halo Battery"
-VERSION = "1.17.2"
+VERSION = "1.17.3"
 PRETEND_VERSION = ""             # --pretend-version 1.0.0: test the updater with a built copy
 LEGACY_NAME = "BatteryTray"      # the app's previous name (settings and autostart are migrated)
 
@@ -1073,6 +1073,20 @@ def last_input_ms() -> Optional[int]:
         return None
 
 
+def input_idle_seconds() -> Optional[float]:
+    """Seconds since the last keyboard/mouse input, or None on non-Windows."""
+    tick = last_input_ms()
+    if tick is None:
+        return None
+    try:
+        import ctypes
+
+        now = int(ctypes.windll.kernel32.GetTickCount()) & 0xFFFFFFFF
+        return max(0.0, ((now - tick) & 0xFFFFFFFF) / 1000.0)
+    except Exception:
+        return None
+
+
 def describe(st: DeviceStatus, name: Optional[str] = None, left: str = "", *, language: str = "en") -> str:
     """The tooltip text. `name` replaces the device's own name (set with "Rename..."),
     `left` is the estimated time left ("about 5 h of use left"), shown only while the
@@ -1873,9 +1887,12 @@ class App:
         """"about 5 h of use left", or "" when turned off or not known yet."""
         if not self.cfg.get("time_left", True) or st.approx or not st.charging_known:
             return ""
+        lang = language if language is not None else self.cfg.get("language", "en")
+        bounds = self.history.seconds_left_range(st.key, st.level)
+        if bounds is not None:
+            return i18n.format_left_range(bounds[0], bounds[1], language=lang)
         seconds = self.history.seconds_left(st.key, st.level)
-        return i18n.format_left(seconds, language=language if language is not None else
-                                self.cfg.get("language", "en")) if seconds is not None else ""
+        return i18n.format_left(seconds, language=lang) if seconds is not None else ""
 
     # ---------------- icon colour
     def compute_light(self) -> bool:
@@ -2151,6 +2168,7 @@ class App:
         seen = set()
         hidden = self._settings_map("hidden")
         now = time.time()
+        idle = input_idle_seconds()
         for st in results:
             # "Hide this device" runs in a menu thread: with the lock, a device is
             # either hidden before this check or has its icon removed after the update
@@ -2160,7 +2178,9 @@ class App:
                 seen.add(st.key)
                 self.history.record(st.key, st.level, st.charging,
                                     st.online and st.charging_known, now,
-                                    coarse=bool(st.approx))
+                                    coarse=bool(st.approx), model=st.name,
+                                    source=st.source,
+                                    transport=getattr(st, "transport", ""), idle=idle)
                 self.missing.pop(st.key, None)
                 ic = self.icons.get(st.key)
                 try:

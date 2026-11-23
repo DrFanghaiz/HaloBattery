@@ -137,10 +137,11 @@ class LamzuProvider(Provider):
         if readings:
             batt, chg = readings[0]
             self._last = (batt, chg, time.time())
-            return [DeviceStatus(key, NAME, batt, chg, True, "lamzu", kind="mouse")]
+            return [DeviceStatus(key, NAME, batt, chg, True, "lamzu", kind="mouse",
+                                 transport=PIDS.get(pid, ""))]
         if self._last and time.time() - self._last[2] < ASLEEP_KEEP:
             return [DeviceStatus(key, NAME, self._last[0], self._last[1], False, "lamzu",
-                                 kind="mouse", wake_on_input=True)]
+                                 kind="mouse", wake_on_input=True, transport=PIDS.get(pid, ""))]
         return []
 
     def diagnostics(self) -> List[str]:
@@ -255,12 +256,15 @@ class LamzuAtlantisProvider(Provider):
             if mv:
                 self._diag.append(f"  {mv} mV")
             self._last = (name, level, charging, now)
-            return [DeviceStatus(THORN_KEY, name, level, charging, True, "lamzu", kind="mouse")]
+            transport = "cable" if pid == 0xF50F else "dongle"
+            return [DeviceStatus(THORN_KEY, name, level, charging, True, "lamzu",
+                                 kind="mouse", transport=transport)]
 
         if present and self._last and now - self._last[3] < THORN_ASLEEP_KEEP:
             name, level, charging, _seen = self._last
+            transport = "cable" if pid == 0xF50F else "dongle"
             return [DeviceStatus(THORN_KEY, name, level, charging, False, "lamzu",
-                                 kind="mouse", wake_on_input=True)]
+                                 kind="mouse", wake_on_input=True, transport=transport)]
         if not present:
             self._last = None
         return []
