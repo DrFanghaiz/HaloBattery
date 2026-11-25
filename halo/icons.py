@@ -282,7 +282,8 @@ def render(level: Optional[int], charging: bool, online: bool, low: int = 20,
            light_taskbar: Optional[bool] = None, badge: str = "",
            pulse: float = 1.0, text: str = "", force_active: bool = False, *,
            size: int = SIZE, brand: str = "default", brand_color: bool = False,
-           animation_phase: float = 0.0) -> Image.Image:
+           animation_phase: float = 0.0, base_alpha: int = 255,
+           sweep_phase: Optional[float] = None) -> Image.Image:
     """badge - device kind: headset / mouse / keyboard / bluetooth (or H / M / K / B).
     pulse - known-level arc brightness 0..1 (the charging "breathing" animation).
     animation_phase - clockwise turn 0..1 for unknown charging; its brightness is steady.
@@ -311,7 +312,8 @@ def render(level: Optional[int], charging: bool, online: bool, low: int = 20,
     if active:
         color = arc_color(level, charging, low, fg)
         opacity = NEUTRAL_OPACITY if color == fg else 255
-        c = color + (int(opacity * max(0.0, min(1.0, pulse))),)
+        soft = base_alpha if (charging and sweep_phase is not None) else 255
+        c = color + (int(opacity * max(0.0, min(1.0, pulse)) * soft / 255.0),)
         lvl = max(0, min(100, level)) if level is not None else None
         if lvl is None:
             if charging:
@@ -340,6 +342,18 @@ def render(level: Optional[int], charging: bool, online: bool, low: int = 20,
                 t = math.radians(ang)
                 x, y = 32 + rr * math.cos(t), 32 + rr * math.sin(t)
                 d.ellipse((_r(x - w / 2), _r(y - w / 2), _r(x + w / 2), _r(y + w / 2)), fill=c)
+        if charging and sweep_phase is not None and lvl is not None and lvl > 0:
+            # A bright segment running clockwise over the charged part of the ring:
+            # the level stays readable while the motion says "charging".
+            cw = w + CHARGE_SWEEP_WIDTH
+            rr = R - cw / 2
+            for seg_start, seg_end in _sweep_segments(lvl, sweep_phase):
+                d.arc(box, seg_start, seg_end, fill=GREEN + (255,), width=_r(cw))
+                for ang in (seg_start, seg_end):
+                    t = math.radians(ang)
+                    x, y = 32 + rr * math.cos(t), 32 + rr * math.sin(t)
+                    d.ellipse((_r(x - cw / 2), _r(y - cw / 2),
+                               _r(x + cw / 2), _r(y + cw / 2)), fill=GREEN + (255,))
 
     # the percentage, or else the device pictogram
     kind = KINDS.get(badge)
@@ -358,9 +372,29 @@ def render(level: Optional[int], charging: bool, online: bool, low: int = 20,
 
 
 # ---------------------------------------------------------------- charging animation
+CHARGE_SWEEP_DEG = 70.0     # length of the bright highlight that runs over the level arc
+CHARGE_SWEEP_FRAMES = 48    # 30 fps -> 1.6 s per turn
+CHARGE_BASE_ALPHA = 130     # the level arc stays readable but soft under the highlight
+CHARGE_SWEEP_WIDTH = 0.8    # logical pixels the highlight is wider than the ring
 BREATH_FRAMES = 90          # 30 frames per second over the three-second cycle
 BREATH_PERIOD = 3.0         # seconds per cycle
 BREATH_DEPTH = 0.88         # at the bottom of the cycle the arc dims to 12%
+
+
+def _sweep_segments(level: int, phase: float):
+    """The angle pieces of the highlight, clipped to the charged part of the ring."""
+    end_allowed = 270.0 if level >= 100 else -90.0 + 360.0 * max(level, 2) / 100.0
+    start = -90.0 + 360.0 * (phase % 1.0)
+    seg_end = start + CHARGE_SWEEP_DEG
+    pieces = []
+    a, b = start, min(seg_end, end_allowed)
+    if b > a:
+        pieces.append((a, b))
+    if seg_end > 270.0:                     # the highlight wraps past 12 o'clock
+        a, b = -90.0, min(seg_end - 360.0, end_allowed)
+        if b > a:
+            pieces.append((a, b))
+    return pieces
 
 
 def breath_level(phase: float) -> float:
@@ -372,11 +406,18 @@ def breath_level(phase: float) -> float:
 def charging_frames(level: Optional[int], online: bool, low: int = 20,
                     light_taskbar: Optional[bool] = None, badge: str = "", text: str = "", *,
                     size: int = SIZE, brand: str = "default", brand_color: bool = False):
-    """A breathing known-level arc or rotating unknown-level arc, cached as one cycle."""
-    return [render(level, True, online, low, light_taskbar, badge, breath_level(i / BREATH_FRAMES),
-                   text=text, size=size, brand=brand, brand_color=brand_color,
-                   animation_phase=i / BREATH_FRAMES if level is None else 0.0)
-            for i in range(BREATH_FRAMES)]
+    """Known level: a bright segment sweeping over the level arc, 1.6 s a turn.
+    Unknown level: the rotating quarter arc over the three-second cycle."""
+    if level is None:
+        return [render(level, True, online, low, light_taskbar, badge,
+                       breath_level(i / BREATH_FRAMES), text=text, size=size,
+                       brand=brand, brand_color=brand_color,
+                       animation_phase=i / BREATH_FRAMES)
+                for i in range(BREATH_FRAMES)]
+    return [render(level, True, online, low, light_taskbar, badge, 1.0, text=text,
+                   size=size, brand=brand, brand_color=brand_color,
+                   base_alpha=CHARGE_BASE_ALPHA, sweep_phase=i / CHARGE_SWEEP_FRAMES)
+            for i in range(CHARGE_SWEEP_FRAMES)]
 
 
 # ---------------------------------------------------------------- top menu bar colour

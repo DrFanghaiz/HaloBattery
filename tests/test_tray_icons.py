@@ -165,10 +165,10 @@ class RenderOnceTests(unittest.TestCase):
 
     def test_a_charging_level_change_draws_one_colour(self):
         self.ic.update(self.charging(50))
-        self.assertEqual(self.calls, [False] * hb.icons.BREATH_FRAMES)
+        self.assertEqual(self.calls, [False] * hb.icons.CHARGE_SWEEP_FRAMES)
         self.calls.clear()
         self.ic.update(self.charging(51))
-        self.assertEqual(self.calls, [False] * hb.icons.BREATH_FRAMES)
+        self.assertEqual(self.calls, [False] * hb.icons.CHARGE_SWEEP_FRAMES)
 
     def test_a_still_icon_draws_one_colour(self):
         self.ic.update(dev())
@@ -180,7 +180,7 @@ class RenderOnceTests(unittest.TestCase):
         self.calls.clear()
         self.app.light_taskbar = True
         self.ic.update(self.charging(50))
-        self.assertEqual(self.calls, [True] * hb.icons.BREATH_FRAMES)
+        self.assertEqual(self.calls, [True] * hb.icons.CHARGE_SWEEP_FRAMES)
         light = self.ic.frames
         self.assertIsNot(light, dark)
         self.calls.clear()

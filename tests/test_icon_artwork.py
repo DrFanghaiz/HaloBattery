@@ -219,21 +219,31 @@ class ArtworkTests(unittest.TestCase):
                             if 150 < relative < 300:
                                 self.assertEqual(image.getpixel((x, y)), reference.getpixel((x, y)))
 
-    def test_known_level_breathing_ignores_rotation_phase(self):
-        for level in (0, 1, 20, 50, 99, 100):
+    def test_known_level_charging_sweeps_a_highlight(self):
+        """A known level keeps its arc, and a bright segment runs over it: motion,
+        not a slow fade (the fade read as "no animation" at 16 px)."""
+        for level in (1, 20, 50, 99, 100):
             for light in (False, True):
                 frames = icons.charging_frames(level, True, light_taskbar=light, badge="mouse", size=20)
-                for i, frame in enumerate(frames):
-                    expected = icons.render(level, True, True, light_taskbar=light, badge="mouse",
-                        size=20, pulse=icons.breath_level(i / icons.BREATH_FRAMES), animation_phase=.37)
-                    self.assertEqual(frame.tobytes(), expected.tobytes())
-                # Every old 10 FPS phase is retained at the corresponding third frame.
-                for old_index in range(30):
-                    old_sample = icons.render(level, True, True, light_taskbar=light,
-                        badge="mouse", size=20, pulse=icons.breath_level(old_index / 30))
-                    self.assertEqual(frames[old_index * 3].tobytes(), old_sample.tobytes())
-                if level:
-                    self.assertNotEqual(frames[0].tobytes(), frames[icons.BREATH_FRAMES // 2].tobytes())
+                self.assertEqual(len(frames), icons.CHARGE_SWEEP_FRAMES)
+                distinct = {frame.tobytes() for frame in frames}
+                # the highlight is visible for at least part of every cycle
+                self.assertGreaterEqual(len(distinct), 3)
+                self.assertNotEqual(frames[0].tobytes(), frames[len(frames) // 2].tobytes())
+                if level >= 50:
+                    # once the charged arc is long enough the highlight moves every frame
+                    self.assertGreaterEqual(len(distinct), len(frames) // 2)
+                # a known level stays independent of the unknown-level rotation phase
+                a = icons.render(level, True, True, light_taskbar=light, badge="mouse", size=20,
+                                 animation_phase=.37)
+                b = icons.render(level, True, True, light_taskbar=light, badge="mouse", size=20,
+                                 animation_phase=.61)
+                self.assertEqual(a.tobytes(), b.tobytes())
+
+    def test_an_empty_ring_does_not_sweep(self):
+        """Level 0 shows an empty ring; a highlight there would claim a level."""
+        frames = icons.charging_frames(0, True, badge="mouse", size=20)
+        self.assertEqual(len({frame.tobytes() for frame in frames}), 1)
 
     def test_unknown_offline_idle_and_paused_ignore_rotation_phase(self):
         for charging, online, paused in ((True, False, False), (False, True, False),

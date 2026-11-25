@@ -6,6 +6,16 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.17.4] - 2026-11-25
+
+### Changed
+- **The charging animation is obvious now**: while a device with a known level charges,
+  a bright segment runs clockwise over the level arc (1.6 s a turn, 30 fps) instead of
+  the whole ring slowly fading over three seconds. At the 16 px taskbar size that fade
+  read as "no animation" - the ring simply dimmed to 12 % and looked like it blinked.
+  The level arc stays visible underneath at a softer green, so the percentage is still
+  readable at a glance; an unknown level keeps the rotating quarter arc.
+
 ## [1.17.3] - 2026-11-24
 
 ### Changed
