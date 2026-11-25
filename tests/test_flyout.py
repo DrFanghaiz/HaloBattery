@@ -502,5 +502,50 @@ class PencilTests(unittest.TestCase):
         self.assertTrue(host.closed)
         self.assertEqual(done, ["icon"])
 
+    def test_header_bar_peers_and_sections_layout_cleanly(self):
+        hdr = flyout.HeaderItem(
+            lambda: "Ninjutso Sora V2",
+            lambda: "40%, charging · charged 30 min",
+            bar=lambda: (40, "charging"),
+            peers=lambda: [("LAMZU Atlantis Mini", "82%", "normal")],
+        )
+        first = flyout.with_section(lambda: "General & alerts", Item("Poll interval", lambda i, it: None))
+        quick_target = Item("Preferences", lambda i, it: None)
+        quick_target.flyout_before = [Item("Percentage in the icon", lambda i, it: None, checked=lambda it: True)]
+        rows = flyout.build_rows(Menu(hdr, first, quick_target))
+        self.assertEqual([r.kind for r in rows], ["header", "section", "item", "item", "item"])
+        self.assertEqual(rows[0].bar, (40, "charging"))
+        self.assertEqual(rows[0].peers, [("LAMZU Atlantis Mini", "82%", "normal")])
+        self.assertFalse(rows[1].selectable)
+        self.assertEqual(rows[3].text, "Percentage in the icon")
+        style = types.SimpleNamespace(px=lambda v: v, line=18, glyph=lambda g: g)
+        w, h = flyout.layout(rows, style, lambda t: len(t) * 7, lambda g: 10)
+        self.assertGreater(w, 0)
+        self.assertGreater(h, 80)
+
+    def test_toggle_closes_when_already_open_for_same_icon(self):
+        host = flyout.FlyoutHost()
+        icon = object()
+        host.panels = [object()]
+        host._icon = icon
+        closed = []
+        host._root = types.SimpleNamespace(after=lambda _ms, fn: fn())
+        host.close = lambda: closed.append(True)
+        self.assertTrue(host.toggle(Menu(), icon))
+        self.assertEqual(closed, [True])
+
+    def test_render_bar_image_antialiases_and_avoids_colour_key_inside_bar(self):
+        for light in (False, True):
+            c = flyout.colours(light)
+            _, kr, kg, kb = flyout.parse_argb(c["key"])
+            key_rgb = (kr, kg, kb)
+            for lvl, kind in ((0, "normal"), (3, "critical"), (95, "normal"), (100, "charging")):
+                img = flyout.render_bar_image(120, 5, lvl, kind, light)
+                self.assertEqual(img.size, (120, 5))
+                # the middle row inside the stadium must never punch a colour-key hole
+                mid_row = [img.getpixel((x, 2)) for x in range(2, 118)]
+                self.assertNotIn(key_rgb, mid_row)
+
+
 if __name__ == "__main__":
     unittest.main()

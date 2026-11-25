@@ -246,12 +246,13 @@ PICTOS = {"headset": (_headset, 0, 2, 18), "mouse": (_mouse, 0, 0, 19.5),
 TEXT_WIDTH = 40.0          # of the 64-unit icon
 TEXT_HEIGHT = 30.0
 _FONT_FILES = ("segoeuib.ttf", "arialbd.ttf", "DejaVuSans-Bold.ttf")
+_CJK_FONT_FILES = ("msyhbd.ttc", "msjhbd.ttc", "YuGothB.ttc", "meiryob.ttc", *_FONT_FILES)
 
 
-@lru_cache(maxsize=32)
-def _font(size: int):
+@lru_cache(maxsize=64)
+def _font(size: int, cjk: bool = False):
     from PIL import ImageFont
-    for name in _FONT_FILES:
+    for name in (_CJK_FONT_FILES if cjk else _FONT_FILES):
         try:
             return ImageFont.truetype(name, size)
         except OSError:
@@ -264,9 +265,10 @@ def _font(size: int):
 
 def _number(d: ImageDraw.ImageDraw, text: str, col) -> None:
     """Draw `text` centred in the ring, as large as TEXT_WIDTH x TEXT_HEIGHT allows."""
+    cjk = any(ord(ch) > 127 for ch in text)
     size = _r(TEXT_HEIGHT * 1.4)
     for _ in range(6):                           # shrink until it fits (2-3 steps at most)
-        font = _font(size)
+        font = _font(size, cjk=cjk)
         x0, y0, x1, y1 = d.textbbox((0, 0), text, font=font)
         w, h = x1 - x0, y1 - y0
         scale = min(_r(TEXT_WIDTH) / max(w, 1), _r(TEXT_HEIGHT) / max(h, 1))
@@ -719,6 +721,30 @@ def top_bar_is_light(prev: Optional[bool]) -> Optional[bool]:
 # standard Windows shell the icons keep following the Windows theme.
 MYDOCKFINDER_EXES = {"dock_64.exe", "dock_32.exe", "mydockfinder.exe"}
 _shell_cache = {"at": 0.0, "running": False}
+_PROCESSENTRY32W = None
+_k32_toolhelp = None
+
+if sys.platform == "win32":
+    try:
+        import ctypes as _ct_th
+        from ctypes import wintypes as _wt_th
+
+        class _PROCESSENTRY32W(_ct_th.Structure):
+            _fields_ = [("dwSize", _wt_th.DWORD), ("cntUsage", _wt_th.DWORD),
+                        ("th32ProcessID", _wt_th.DWORD), ("th32DefaultHeapID", _ct_th.c_void_p),
+                        ("th32ModuleID", _wt_th.DWORD), ("cntThreads", _wt_th.DWORD),
+                        ("th32ParentProcessID", _wt_th.DWORD), ("pcPriClassBase", _ct_th.c_long),
+                        ("dwFlags", _wt_th.DWORD), ("szExeFile", _ct_th.c_wchar * 260)]
+
+        _k32_toolhelp = _ct_th.windll.kernel32
+        _k32_toolhelp.CreateToolhelp32Snapshot.restype = _ct_th.c_void_p
+        _k32_toolhelp.CreateToolhelp32Snapshot.argtypes = [_wt_th.DWORD, _wt_th.DWORD]
+        _k32_toolhelp.Process32FirstW.argtypes = [_ct_th.c_void_p, _ct_th.POINTER(_PROCESSENTRY32W)]
+        _k32_toolhelp.Process32NextW.argtypes = [_ct_th.c_void_p, _ct_th.POINTER(_PROCESSENTRY32W)]
+        _k32_toolhelp.CloseHandle.argtypes = [_ct_th.c_void_p]
+    except Exception:
+        _PROCESSENTRY32W = None
+        _k32_toolhelp = None
 
 
 def is_mydockfinder(name: str) -> bool:
@@ -729,45 +755,32 @@ def is_mydockfinder(name: str) -> bool:
 
 def running_process_names() -> set:
     """Lower-case executable names of running processes (Toolhelp snapshot)."""
-    if sys.platform != "win32":
+    if sys.platform != "win32" or _PROCESSENTRY32W is None or _k32_toolhelp is None:
         return set()
     import ctypes
-    from ctypes import wintypes
-
-    class PROCESSENTRY32W(ctypes.Structure):
-        _fields_ = [("dwSize", wintypes.DWORD), ("cntUsage", wintypes.DWORD),
-                    ("th32ProcessID", wintypes.DWORD), ("th32DefaultHeapID", ctypes.c_void_p),
-                    ("th32ModuleID", wintypes.DWORD), ("cntThreads", wintypes.DWORD),
-                    ("th32ParentProcessID", wintypes.DWORD), ("pcPriClassBase", ctypes.c_long),
-                    ("dwFlags", wintypes.DWORD), ("szExeFile", ctypes.c_wchar * 260)]
-
-    k32 = ctypes.windll.kernel32
-    k32.CreateToolhelp32Snapshot.restype = ctypes.c_void_p
-    k32.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
-    k32.Process32FirstW.argtypes = [ctypes.c_void_p, ctypes.POINTER(PROCESSENTRY32W)]
-    k32.Process32NextW.argtypes = [ctypes.c_void_p, ctypes.POINTER(PROCESSENTRY32W)]
-    k32.CloseHandle.argtypes = [ctypes.c_void_p]
-    snap = k32.CreateToolhelp32Snapshot(0x00000002, 0)      # TH32CS_SNAPPROCESS
+    snap = _k32_toolhelp.CreateToolhelp32Snapshot(0x00000002, 0)      # TH32CS_SNAPPROCESS
     if not snap or snap == ctypes.c_void_p(-1).value:
         return set()
     names = set()
     try:
-        entry = PROCESSENTRY32W()
-        entry.dwSize = ctypes.sizeof(PROCESSENTRY32W)
-        ok = k32.Process32FirstW(snap, ctypes.byref(entry))
+        entry = _PROCESSENTRY32W()
+        entry.dwSize = ctypes.sizeof(_PROCESSENTRY32W)
+        ok = _k32_toolhelp.Process32FirstW(snap, ctypes.byref(entry))
         while ok:
             names.add(entry.szExeFile.lower())
-            ok = k32.Process32NextW(snap, ctypes.byref(entry))
+            ok = _k32_toolhelp.Process32NextW(snap, ctypes.byref(entry))
     finally:
-        k32.CloseHandle(snap)
+        _k32_toolhelp.CloseHandle(snap)
     return names
 
 
-def mydockfinder_running(max_age: float = 10.0) -> bool:
-    """Cached for a few seconds: listing processes is cheap but not free."""
+def mydockfinder_running(max_age: Optional[float] = None) -> bool:
+    """Cached for a few seconds: listing processes is cheap but not free.
+    When MyDockFinder is not running, check less often (60 s instead of 10 s)."""
     import time
     now = time.time()
-    if now - _shell_cache["at"] >= max_age:
+    age = (10.0 if _shell_cache["running"] else 60.0) if max_age is None else max_age
+    if now - _shell_cache["at"] >= age:
         try:
             _shell_cache["running"] = any(is_mydockfinder(n) for n in running_process_names())
         except Exception:

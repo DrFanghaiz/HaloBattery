@@ -218,6 +218,17 @@ class History:
         rates.sort()
         lo = rates[max(0, int(len(rates) * 0.25) - 1)]
         hi = rates[min(len(rates) - 1, int(len(rates) * 0.75))]
+        # If the level has been sitting still since the last drop for longer than the
+        # slow bound would allow, cap the slow bound at 1 % / tail_dt so the range
+        # reflects the observed hold just like rate() does, and always bracket rate().
+        if len(pts) >= 2 and pts[-1][1] == pts[-2][1]:
+            tail_dt = pts[-1][0] - pts[-2][0]
+            if tail_dt > 0:
+                lo = min(lo, 1.0 / tail_dt)
+        central = self.rate(key)
+        if central is not None and central > 0:
+            lo = min(lo, central)
+            hi = max(hi, central)
         if lo <= 0 or hi <= 0:
             return None
         return lo, hi

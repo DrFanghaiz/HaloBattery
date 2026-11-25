@@ -5,14 +5,35 @@ Like the icon lab, use the taskbar window's DPI rather than the caller's DPI.
 """
 import ctypes
 from ctypes import wintypes
-import os
-from pathlib import Path
+import io
 import sys
-import tempfile
+
+
+_cached_u32 = None
 
 
 def _user32():
-    return ctypes.WinDLL("user32", use_last_error=True)
+    global _cached_u32
+    if _cached_u32 is None:
+        u32 = ctypes.WinDLL("user32", use_last_error=True)
+        for name, argtypes, restype in (
+            ("FindWindowW", [wintypes.LPCWSTR, wintypes.LPCWSTR], wintypes.HWND),
+            ("GetDpiForWindow", [wintypes.HWND], wintypes.UINT),
+            ("GetSystemMetricsForDpi", [ctypes.c_int, wintypes.UINT], ctypes.c_int),
+            ("CreateIconFromResourceEx", [
+                ctypes.c_char_p, wintypes.DWORD, wintypes.BOOL, wintypes.DWORD,
+                ctypes.c_int, ctypes.c_int, wintypes.UINT,
+            ], wintypes.HANDLE),
+            ("DestroyIcon", [wintypes.HANDLE], wintypes.BOOL),
+        ):
+            try:
+                fn = getattr(u32, name)
+                fn.argtypes = argtypes
+                fn.restype = restype
+            except AttributeError:
+                pass
+        _cached_u32 = u32
+    return _cached_u32
 
 
 def tray_pixels() -> int:
@@ -24,19 +45,13 @@ def tray_pixels() -> int:
     dpi = 96
     try:
         user32 = _user32()
-        user32.FindWindowW.argtypes = [wintypes.LPCWSTR, wintypes.LPCWSTR]
-        user32.FindWindowW.restype = wintypes.HWND
         hwnd = user32.FindWindowW("Shell_TrayWnd", None)
         if hwnd:
             try:
-                user32.GetDpiForWindow.argtypes = [wintypes.HWND]
-                user32.GetDpiForWindow.restype = wintypes.UINT
                 dpi = user32.GetDpiForWindow(hwnd) or 96
             except (AttributeError, OSError):
                 pass
         try:
-            user32.GetSystemMetricsForDpi.argtypes = [ctypes.c_int, wintypes.UINT]
-            user32.GetSystemMetricsForDpi.restype = ctypes.c_int
             pixels = user32.GetSystemMetricsForDpi(49, dpi)  # SM_CXSMICON
             if pixels > 0:
                 return pixels
@@ -48,30 +63,23 @@ def tray_pixels() -> int:
 
 
 def load_icon_handle(image):
-    """Load exactly the physical pixels supplied by the renderer.
+    """Load exactly the physical pixels supplied by the renderer in memory.
 
     The caller owns the resulting HICON and must eventually DestroyIcon it.
-    Never use LR_DEFAULTSIZE: that would select and rescale to a system default
-    even when the renderer already supplied the taskbar's physical dimensions.
+    Uses CreateIconFromResourceEx with an in-memory PNG buffer so tray icon
+    updates (especially charging animation frames) never touch the filesystem.
     """
     width, height = image.size
     if not (1 <= width <= 256 and 1 <= height <= 256):
         raise ValueError("ICO dimensions must be between 1 and 256 pixels")
     user32 = _user32()
-    user32.LoadImageW.argtypes = [wintypes.HINSTANCE, wintypes.LPCWSTR,
-                                 wintypes.UINT, ctypes.c_int, ctypes.c_int,
-                                 wintypes.UINT]
-    user32.LoadImageW.restype = wintypes.HANDLE
-    descriptor, filename = tempfile.mkstemp(suffix=".ico", prefix="halo-tray-")
-    os.close(descriptor)
-    try:
-        image.save(filename, format="ICO", sizes=[(width, height)])
-        handle = user32.LoadImageW(None, filename, 1, width, height, 0x10)
-        if not handle:
-            raise ctypes.WinError(ctypes.get_last_error())
-        return handle
-    finally:
-        Path(filename).unlink(missing_ok=True)
+    buf = io.BytesIO()
+    image.save(buf, format="PNG")
+    data = buf.getvalue()
+    handle = user32.CreateIconFromResourceEx(data, len(data), True, 0x00030000, width, height, 0)
+    if not handle:
+        raise ctypes.WinError(ctypes.get_last_error())
+    return handle
 
 
 def destroy_icon_handle(handle) -> None:

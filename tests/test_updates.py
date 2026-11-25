@@ -570,6 +570,15 @@ class AppUpdateTests(unittest.TestCase):
         _, shown = self.run_after_update({"last_version": "99.0.0"})
         self.assertEqual(shown, [])
 
+    def test_show_whats_new_skips_network_when_update_check_is_off(self):
+        app = self.app({"update_check": False})
+        with mock.patch.object(hb, "save_config", lambda c: None), \
+                mock.patch.object(hb.updates, "fetch_release") as fetch, \
+                mock.patch.object(hb.whatsnew, "show") as show:
+            app.show_whats_new("1.17.0")
+        fetch.assert_not_called()
+        show.assert_called_once()
+
 
 class UpstreamRepositoryTests(unittest.TestCase):
     def test_personal_repository_is_the_update_source(self):

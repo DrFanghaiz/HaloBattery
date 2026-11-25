@@ -304,6 +304,45 @@ class UserReturnTests(HideRenameTestCase):
         self.assertGreaterEqual(second - first, hb.INPUT_WAKE_GAP,
                                 "the next input-driven poll waited out the rate limit")
 
+    def test_repeated_failed_input_wakes_back_off(self):
+        app = make_app({"interval": 60})
+        app.providers = []
+        app.apply([mouse(40, online=False, wake=True)])
+        self.game(False)
+        inputs = iter(range(1000, 100000, 1000))
+        clock = iter(range(0, 100000))
+        self.loop(app, inputs)
+        times = []
+        for _ in range(3):
+            with mock.patch.object(hb.time, "time", lambda: next(clock)):
+                app.wait_next(sig=None)
+            times.append(app.input_wake_at)
+        self.assertGreaterEqual(times[1] - times[0], hb.INPUT_WAKE_GAP * 2)
+        self.assertGreaterEqual(times[2] - times[1], hb.INPUT_WAKE_GAP * 4)
+
+    def test_wake_backoff_resets_after_device_recovers_or_changes(self):
+        app = make_app({"interval": 60})
+        app.providers = []
+        app.apply([mouse(40, online=False, wake=True)])
+        self.game(False)
+        inputs = iter(range(1000, 100000, 1000))
+        clock = iter(range(0, 100000))
+        self.loop(app, inputs)
+        for _ in range(3):
+            with mock.patch.object(hb.time, "time", lambda: next(clock)):
+                app.wait_next(sig=None)
+        self.assertGreaterEqual(app.input_wake_misses, 3)
+        # another device newly goes grey: it gets an immediate wake without old backoff
+        other = hb.DeviceStatus("other:1", "Other", 55, False, False, "ninjutso",
+                                kind="mouse", wake_on_input=True)
+        app.apply([mouse(40, online=True, wake=False), other])
+        now_t = next(clock) + hb.INPUT_WAKE_GAP + 1
+        later = iter(range(now_t, now_t + 1000))
+        with mock.patch.object(hb.time, "time", lambda: next(later)):
+            app.wait_next(sig=None)
+        self.assertEqual(app.input_wake_misses, 1)
+        self.assertLess(app.input_wake_at - now_t, hb.INPUT_WAKE_GAP)
+
 
 # ---------------------------------------------------------------- status file
 class StatusFileTests(HideRenameTestCase):
@@ -359,6 +398,56 @@ class StatusFileTests(HideRenameTestCase):
         app = make_app({"status_file": True})
         data = app.status_data([], running=False)
         self.assertEqual((data["running"], data["devices"]), (False, []))
+
+
+class UiRecognitionTests(HideRenameTestCase):
+    def test_device_monograms_distinguish_common_mice_and_custom_names(self):
+        self.assertEqual(hb.device_monogram("Ninjutso Sora V2"), "V2")
+        self.assertEqual(hb.device_monogram("Ninjutso Sora V3"), "V3")
+        self.assertEqual(hb.device_monogram("LAMZU Atlantis Mini"), "LA")
+        self.assertEqual(hb.device_monogram("LAMZU Thorn (4K receiver)"), "LT")
+        self.assertEqual(hb.device_monogram("主力"), "主")
+
+    def test_multiple_mice_get_distinct_monograms_while_single_mouse_keeps_glyph(self):
+        app = make_app()
+        s1 = hb.DeviceStatus("ninjutso", "Ninjutso Sora V2", 95, False, True, "ninjutso", kind="mouse")
+        s2 = hb.DeviceStatus("lamzu:3554f510", "LAMZU Atlantis Mini", 62, False, True, "lamzu", kind="mouse")
+        app.apply([s1])
+        self.assertEqual(app.icon_text_for(s1), "")
+        app.apply([s1, s2])
+        self.assertEqual(app.icon_text_for(s1), "V2")
+        self.assertEqual(app.icon_text_for(s2), "LA")
+        # explicit percentage mode still wins
+        app.cfg["percent_in_icon"] = True
+        self.assertEqual(app.icon_text_for(s1), "95")
+
+    def test_charging_duration_and_frozen_firmware_hint_in_flyout_header(self):
+        app = make_app({"language": "zh-CN"})
+        st = hb.DeviceStatus("ninjutso", "Ninjutso Sora V2", 40, True, True, "ninjutso", kind="mouse")
+        app.record_charge_state(st, 1000.0)
+        # after 30 minutes stuck at 40% while charging, both elapsed time and firmware hint appear
+        extra = app.charging_extra_text(st, now=1000.0 + 1800.0)
+        self.assertIn("已充 30 分钟", extra)
+        self.assertIn("拔线后才刷新", extra)
+        # once level advances to 41%, the frozen hint clears while total duration stays
+        st_up = hb.DeviceStatus("ninjutso", "Ninjutso Sora V2", 41, True, True, "ninjutso", kind="mouse")
+        app.record_charge_state(st_up, 1000.0 + 1860.0)
+        extra_after = app.charging_extra_text(st_up, now=1000.0 + 1920.0)
+        self.assertIn("已充 32 分钟", extra_after)
+        self.assertNotIn("拔线后才刷新", extra_after)
+
+    def test_left_click_toggles_flyout_and_right_click_shows_flyout(self):
+        ic = hb.tray_icon("ninjutso", "test", hb.icons.render(80, False, True, size=16),
+                          "title", hb.Menu(hb.Item("Refresh", lambda i, it: None)))
+        ic.menu = hb.Menu(hb.Item("Refresh", lambda i, it: None))
+        events = []
+        ic._hb_flyout = mock.Mock(
+            toggle=lambda m, icon: events.append("toggle") or True,
+            show=lambda m, icon: events.append("show") or True,
+        )
+        ic._on_notify(0, hb.WM_LBUTTONUP)
+        ic._on_notify(0, hb.WM_RBUTTONUP)
+        self.assertEqual(events, ["toggle", "show"])
 
 
 if __name__ == "__main__":

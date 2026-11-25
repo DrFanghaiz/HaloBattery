@@ -6,6 +6,22 @@ and the project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.17.5] - 2026-11-25
+
+### Added
+- **Left-click opens and toggles the Windows 11 battery flyout**: clicking a tray icon with the left mouse button now opens the battery card (and closes it on a second click) instead of silently running a background refresh.
+- **Visual battery progress bar, charging duration & frozen-firmware hints, and multi-device overview in the flyout header**: the flyout header now draws a colour-coded battery bar, shows elapsed charging time plus a hint when a mouse firmware holds its reported percentage until unplugged, lists any other connected devices at a glance, exposes a one-click "Percentage in the icon" toggle on the main flyout, and groups `Preferences` into four clear sections.
+- **Automatic taskbar icon monograms when multiple same-kind devices are connected**: two or more mice (such as Ninjutso Sora V2/V3 and LAMZU Atlantis Mini) automatically show short labels (`V2`, `V3`, `LA`, or CJK custom initials) inside their battery rings instead of identical silhouettes.
+
+### Fixed
+- **Sleeping mice no longer spam wake polls while another device is in use**: input-driven re-reads of a greyed device now back off exponentially (`5 s -> 10 s -> 20 s -> 40 s -> poll interval`) and log subsequent retries at debug level, resetting immediately once the greyed device set changes or wakes.
+- **Transient taskbar swap failures during full-screen mode switches no longer log error tracebacks**: `Shell_NotifyIcon` errors in `theme_loop` are retried with a warning, and icon colour/size log messages only fire on actual colour or pixel-size changes.
+- **Turning off automatic update checks also skips fetching release notes on version upgrades**: `What's new` no longer contacts GitHub when `update_check` is false.
+- **Time-left range estimates account for long flat holds and always bracket the central estimate**: `History.rate_bounds()` caps the slow drain bound by the current plateau duration and keeps the regression estimate inside the reported interval.
+
+### Changed
+- **Lower memory, disk and idle overhead**: tray HICON handles are created directly from in-memory PNG buffers (`CreateIconFromResourceEx`) instead of temporary `.ico` files; the `tkinter` flyout thread and disabled device provider instances are created lazily on demand; disabled Bluetooth/update loops sleep without periodic timer wakeups; and unused `numpy` / `PIL` AVIF, WebP and CMS codecs are excluded from PyInstaller builds.
+
 ## [1.17.4] - 2026-11-25
 
 ### Changed

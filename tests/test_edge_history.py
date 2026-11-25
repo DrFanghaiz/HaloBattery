@@ -60,6 +60,24 @@ class EstimateTests(unittest.TestCase):
         self.assertLessEqual(bounds[0], central)
         self.assertGreaterEqual(bounds[1], central)
 
+    def test_seconds_left_range_widens_when_level_sits_still(self):
+        h = History()
+        t = drain(h)
+        before = h.seconds_left_range(K, 70)
+        # even a short hold keeps the central regression inside the reported range
+        h.record(K, 70, False, True, t + 300.0)
+        mid_central = h.seconds_left(K, 70)
+        mid_bounds = h.seconds_left_range(K, 70)
+        self.assertIsNotNone(mid_bounds)
+        self.assertLessEqual(mid_bounds[0], mid_central)
+        self.assertGreaterEqual(mid_bounds[1], mid_central)
+        # sit at 70% for 2 hours without dropping
+        for i in range(1, 13):
+            h.record(K, 70, False, True, t + i * 600.0)
+        after = h.seconds_left_range(K, 70)
+        self.assertIsNotNone(after)
+        self.assertGreater(after[1], before[1])
+
     def test_unknown_device_has_no_estimate(self):
         self.assertIsNone(History().rate("nobody"))
         self.assertIsNone(History().seconds_left("nobody", 50))

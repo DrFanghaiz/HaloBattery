@@ -211,4 +211,11 @@ MESSAGES = {
     'interval.2': '1 min',
     'interval.3': '2 min',
     'interval.4': '5 min',
+    "state.charged_minutes": "充電 {minutes} 分",
+    "state.charged_hours_minutes": "充電 {hours} 時間 {minutes} 分",
+    "state.charging_frozen_hint": "ケーブルを抜くと残量が更新される場合があります",
+    "preferences.group.general": "一般と通知",
+    "preferences.group.devices": "デバイスと接続",
+    "preferences.group.appearance": "アイコンと外観",
+    "preferences.group.system": "システムと更新",
 }

@@ -1,5 +1,5 @@
-"""Tray DPI/ICO tests with mocked Windows calls; no desktop or hardware access."""
-from pathlib import Path
+"""Tray DPI/HICON tests with mocked Windows calls; no desktop or hardware access."""
+import io
 from types import SimpleNamespace
 import unittest
 from unittest import mock
@@ -13,7 +13,7 @@ def user32(dpi=120, metric=20, hwnd=0x100000001):
     return SimpleNamespace(FindWindowW=mock.Mock(return_value=hwnd),
                            GetDpiForWindow=mock.Mock(return_value=dpi),
                            GetSystemMetricsForDpi=mock.Mock(return_value=metric),
-                           LoadImageW=mock.Mock(), DestroyIcon=mock.Mock())
+                           CreateIconFromResourceEx=mock.Mock(), DestroyIcon=mock.Mock())
 
 
 class TrayPixelsTests(unittest.TestCase):
@@ -80,48 +80,34 @@ class IconHandleTests(unittest.TestCase):
         for size in (16, 20, 24, 32, 40, 48, 64):
             with self.subTest(size=size):
                 native = user32()
-                seen = []
                 handle = 0x100000001
 
-                def load(instance, filename, kind, width, height, flags):
-                    seen.append(Path(filename))
-                    with Image.open(filename) as ico:
-                        self.assertEqual(ico.ico.sizes(), {(size, size)})
-                    self.assertEqual((instance, kind, width, height, flags),
-                                     (None, 1, size, size, 0x10))
+                def create(data, length, is_icon, version, width, height, flags):
+                    self.assertEqual(length, len(data))
+                    with Image.open(io.BytesIO(data)) as png:
+                        self.assertEqual(png.format, "PNG")
+                        self.assertEqual(png.size, (size, size))
+                    self.assertEqual((is_icon, version, width, height, flags),
+                                     (True, 0x00030000, size, size, 0))
                     return handle
 
-                native.LoadImageW.side_effect = load
+                native.CreateIconFromResourceEx.side_effect = create
                 with mock.patch.object(tray_dpi, "_user32", return_value=native):
                     result = tray_dpi.load_icon_handle(Image.new("RGBA", (size, size)))
                 self.assertEqual(result, handle)
-                self.assertFalse(seen[0].exists())
 
-    def test_save_failure_removes_temporary_file(self):
+    def test_save_failure_propagates_without_native_call(self):
         native = user32()
         image = mock.Mock(size=(20, 20))
-        paths = []
-
-        def fail(filename, **kwargs):
-            paths.append(Path(filename))
-            raise OSError("save failed")
-
-        image.save.side_effect = fail
+        image.save.side_effect = OSError("save failed")
         with mock.patch.object(tray_dpi, "_user32", return_value=native):
             with self.assertRaisesRegex(OSError, "save failed"):
                 tray_dpi.load_icon_handle(image)
-        self.assertFalse(paths[0].exists())
-        native.LoadImageW.assert_not_called()
+        native.CreateIconFromResourceEx.assert_not_called()
 
-    def test_load_failure_removes_temporary_file_and_raises(self):
+    def test_load_failure_raises(self):
         native = user32()
-        paths = []
-
-        def fail(instance, filename, *args):
-            paths.append(Path(filename))
-            return 0
-
-        native.LoadImageW.side_effect = fail
+        native.CreateIconFromResourceEx.return_value = 0
         with mock.patch.object(tray_dpi, "_user32", return_value=native), \
                 mock.patch.object(tray_dpi.ctypes, "get_last_error", return_value=5,
                                   create=True), \
@@ -129,7 +115,6 @@ class IconHandleTests(unittest.TestCase):
                                   create=True):
             with self.assertRaisesRegex(OSError, "load failed"):
                 tray_dpi.load_icon_handle(Image.new("RGBA", (20, 20)))
-        self.assertFalse(paths[0].exists())
 
     def test_invalid_ico_size_is_rejected_before_native_calls(self):
         for size in ((0, 20), (20, 0), (257, 257)):

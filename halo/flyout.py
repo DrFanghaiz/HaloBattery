@@ -53,6 +53,10 @@ CHEVRON_GAP = 16                     # between the text and the submenu chevron
 SEP_MARGIN_X, SEP_MARGIN_Y = 12, 4
 HEADER_PAD_T, HEADER_PAD_B = 8, 8     # inside the header (above its title, below its detail)
 HEADER_LINE_GAP = 2                  # between the title and the detail
+BAR_H = 4                            # slim Windows 11 Fluent progress bar height
+BAR_GAP = 7                          # vertical gap above the battery bar / peer list
+PEER_GAP = 3                         # vertical gap between peer device summary rows
+SECTION_PAD_T, SECTION_PAD_B = 6, 2  # above and below a Preferences group caption
 EDIT_GAP = 8                         # between the header's title and its pencil button
 BUTTON_W, BUTTON_H, BUTTON_RADIUS = 28, 26, 4
 VALUE_MIN_W = 34
@@ -288,9 +292,14 @@ class HeaderItem(Item):
     disabled item "title: detail"."""
 
     def __init__(self, title: Callable[[], str], detail: Callable[[], str] = lambda: "",
-                 edit: Optional[Callable[[object], None]] = None, **kwargs):
+                 edit: Optional[Callable[[object], None]] = None, *,
+                 bar: Optional[Callable[[], Optional[Tuple[Optional[int], str]]]] = None,
+                 peers: Optional[Callable[[], Sequence[Tuple[str, str, str]]]] = None,
+                 **kwargs):
         self._title, self._detail = title, detail
         self.edit = edit
+        self.bar = bar
+        self.peers = peers
 
         def text(_item):
             t, d = self.title(), self.detail()
@@ -311,6 +320,92 @@ def classic_only(item: Item) -> Item:
     do the same, e.g. the pencil of a HeaderItem)."""
     item.flyout_hidden = True
     return item
+
+
+def with_section(label: Callable[[], str], item: Item) -> Item:
+    """Attach a Flyout-only group heading right above `item` without changing pystray's item list."""
+    item.flyout_section = label
+    return item
+
+
+def bar_colour(kind: str, light: bool) -> str:
+    """Semantic battery accent colour for the Flyout header progress bar and peer list."""
+    if kind == "charging":
+        return "#16A34A" if light else "#2EE070"
+    if kind == "critical":
+        return "#DC2626" if light else "#F04B4B"
+    if kind == "low":
+        return "#D97706" if light else "#F5AA28"
+    if kind == "inactive":
+        return "#8A8A8A" if light else "#7A7A7A"
+    return "#0F6CBD" if light else "#4CC2FF"
+
+
+def render_bar_image(width: int, height: int, level: Optional[int], kind: str, light: bool):
+    """Render a 4x supersampled anti-aliased stadium progress bar for a colour-key canvas.
+
+    Exterior pixels use the exact transparent colour key `c["key"]` so Windows 11
+    acrylic shows around the rounded ends; interior and edge pixels are blended over
+    the theme's `tint` RGB (nudged away from `key` if identical) so there is neither
+    stair-stepping nor colour-key punching.
+    """
+    from PIL import Image, ImageDraw
+    w = max(2, int(width))
+    h = max(2, int(height))
+    scale = 4
+    w4, h4 = w * scale, h * scale
+    r4 = h4 // 2
+
+    p = PALETTE[light]
+    _ta, tr, tg, tb = parse_argb(p["tint"])
+    base = (tr, tg, tb)
+    c = colours(light)
+    _, kr, kg, kb = parse_argb(c["key"])
+    key_rgb = (kr, kg, kb)
+
+    # Subtle Fluent track colour laid over the acrylic tint
+    track_hex = over("#17000000" if light else "#24FFFFFF", base)
+    _, trk_r, trk_g, trk_b = parse_argb(track_hex)
+    _, fil_r, fil_g, fil_b = parse_argb(bar_colour(kind, light))
+
+    mask = Image.new("L", (w4, h4), 0)
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, w4 - 1, h4 - 1), radius=r4, fill=255)
+
+    art = Image.new("RGBA", (w4, h4), (trk_r, trk_g, trk_b, 255))
+    if level is not None and level > 0:
+        pct = max(0, min(100, int(level)))
+        if pct >= 100:
+            fill_w4 = w4
+        else:
+            fill_w4 = max(h4, round(w4 * pct / 100))
+            # Leave at least a visible rounded track cap when below 100 % so 95-99 %
+            # never pinches the remaining track into a 1 px stray dot.
+            if w4 - fill_w4 < max(scale * 2, r4):
+                fill_w4 = max(h4, w4 - max(scale * 2, r4))
+        ImageDraw.Draw(art).rounded_rectangle(
+            (0, 0, min(w4, fill_w4) - 1, h4 - 1),
+            radius=r4,
+            fill=(fil_r, fil_g, fil_b, 255),
+        )
+    art.putalpha(mask)
+    small = art.resize((w, h), Image.Resampling.BOX)
+
+    out = Image.new("RGB", (w, h), key_rgb)
+    src = small.load()
+    dst = out.load()
+    for y in range(h):
+        for x in range(w):
+            pr, pg, pb, pa = src[x, y]
+            if pa == 0:
+                continue
+            k = pa / 255.0
+            mr = round(pr * k + base[0] * (1.0 - k))
+            mg = round(pg * k + base[1] * (1.0 - k))
+            mb = round(pb * k + base[2] * (1.0 - k))
+            if (mr, mg, mb) == key_rgb:
+                mb = mb - 1 if mb > 0 else mb + 1
+            dst[x, y] = (mr, mg, mb)
+    return out
 
 
 def wrap(text: str, width: int, measure) -> List[str]:
@@ -533,8 +628,14 @@ class _Style:
         if text == "TkDefaultFont":
             self.font = tk_font.nametofont("TkDefaultFont").copy()
             self.font.configure(size=-self.px(TEXT_PX))
+            self.title_font = tk_font.nametofont("TkDefaultFont").copy()
+            self.title_font.configure(size=-self.px(TEXT_PX), weight="bold")
+            self.section_font = tk_font.nametofont("TkDefaultFont").copy()
+            self.section_font.configure(size=-max(1, self.px(TEXT_PX - 2)), weight="bold")
         else:
             self.font = tk_font.Font(root, family=text, size=-self.px(TEXT_PX))
+            self.title_font = tk_font.Font(root, family=text, size=-self.px(TEXT_PX), weight="bold")
+            self.section_font = tk_font.Font(root, family=text, size=-max(1, self.px(TEXT_PX - 2)), weight="bold")
         glyph_family = self.icon_family or self.font.actual("family")
         self.check_font = tk_font.Font(root, family=glyph_family, size=-self.px(CHECK_PX))
         self.chevron_font = tk_font.Font(root, family=glyph_family, size=-self.px(CHEVRON_PX))
@@ -549,12 +650,14 @@ class _Style:
 
 class _Row:
     def __init__(self, kind: str, item=None):
-        self.kind = kind            # "item", "sep", "counter" or "header"
+        self.kind = kind            # "item", "sep", "section", "counter" or "header"
         self.item = item
         self.text = ""
         self.title = ""             # a header: its title and detail ...
         self.detail = ""
         self.lines: List[Tuple[str, bool]] = []   # ... wrapped: (text, is the detail)
+        self.bar: Optional[Tuple[Optional[int], str]] = None
+        self.peers: List[Tuple[str, str, str]] = []
         self.edit = None            # a header's pencil button: its action
         self.checked: Optional[bool] = None
         self.enabled = True
@@ -566,7 +669,30 @@ class _Row:
     def selectable(self) -> bool:
         if self.kind == "header":
             return self.edit is not None          # only its pencil button
-        return self.kind != "sep" and self.enabled
+        return self.kind not in ("sep", "section") and self.enabled
+
+
+def _append_item_row(rows: List[_Row], it) -> None:
+    sec_fn = getattr(it, "flyout_section", None)
+    if sec_fn is not None:
+        sec = _Row("section")
+        sec.enabled = False
+        try:
+            sec.text = str(sec_fn() or "")
+        except Exception as e:
+            log.warning("menu section: %s", e)
+        if sec.text:
+            rows.append(sec)
+    row = _Row("counter" if isinstance(it, CounterItem) else "item", it)
+    try:
+        row.text = str(it.text)
+        row.enabled = bool(it.enabled)
+        row.checked = None if row.kind == "counter" else it.checked
+        row.submenu = None if row.kind == "counter" else it.submenu
+    except Exception as e:                     # a broken item must not break the menu
+        log.warning("menu item: %s", e)
+        row.enabled = False
+    rows.append(row)
 
 
 def build_rows(menu) -> List[_Row]:
@@ -575,6 +701,9 @@ def build_rows(menu) -> List[_Row]:
     for it in menu:
         if getattr(it, "flyout_hidden", False):
             continue
+        for extra in getattr(it, "flyout_before", ()) or ():
+            if getattr(extra, "visible", True):
+                _append_item_row(rows, extra)
         if it is Menu.SEPARATOR:
             if not (rows and rows[-1].kind == "header"):     # the header has its own line
                 rows.append(_Row("sep"))
@@ -585,21 +714,16 @@ def build_rows(menu) -> List[_Row]:
             row.edit = it.edit
             try:
                 row.title, row.detail = it.title(), it.detail()
+                if it.bar is not None:
+                    row.bar = it.bar()
+                if it.peers is not None:
+                    row.peers = list(it.peers() or ())
             except Exception as e:
                 log.warning("menu header: %s", e)
             row.text = f"{row.title}: {row.detail}" if row.detail else row.title
             rows.append(row)
             continue
-        row = _Row("counter" if isinstance(it, CounterItem) else "item", it)
-        try:
-            row.text = str(it.text)
-            row.enabled = bool(it.enabled)
-            row.checked = None if row.kind == "counter" else it.checked
-            row.submenu = None if row.kind == "counter" else it.submenu
-        except Exception as e:                     # a broken item must not break the menu
-            log.warning("menu item: %s", e)
-            row.enabled = False
-        rows.append(row)
+        _append_item_row(rows, it)
     return rows
 
 
@@ -610,6 +734,7 @@ def layout(rows: List[_Row], style: _Style, measure_text, measure_glyph) -> Tupl
     item_h = px(ITEM_MARGIN_Y) * 2 + px(ITEM_PAD_T) + style.line + px(ITEM_PAD_B)
     counter_h = max(item_h, px(ITEM_MARGIN_Y) * 2 + px(BUTTON_H))
     sep_h = px(SEP_MARGIN_Y) * 2 + px(1)
+    section_h = px(SECTION_PAD_T) + style.line + px(SECTION_PAD_B)
     content = 0
     for row in rows:
         if row.kind in ("sep", "header"):
@@ -628,6 +753,8 @@ def layout(rows: List[_Row], style: _Style, measure_text, measure_glyph) -> Tupl
         row.y = y
         if row.kind == "sep":
             row.h = sep_h
+        elif row.kind == "section":
+            row.h = section_h
         elif row.kind == "header":
             title_w = header_w - (px(EDIT_GAP) + px(BUTTON_W) if row.edit is not None else 0)
             row.lines = [(t, False) for t in wrap(row.title, title_w, measure_text)]
@@ -648,10 +775,15 @@ def header_text_width(width: int, style: _Style) -> int:
 
 
 def header_height(row: _Row, style: _Style) -> int:
-    """Padding, the lines (a small gap before the detail) and a separator below."""
+    """Padding, the lines (a small gap before the detail), optional bar/peers and a separator below."""
     px = style.px
     gap = px(HEADER_LINE_GAP) if any(d for _t, d in row.lines) and len(row.lines) > 1 else 0
-    return (px(HEADER_PAD_T) + style.line * len(row.lines) + gap + px(HEADER_PAD_B)
+    extra = 0
+    if row.bar is not None:
+        extra += px(BAR_GAP) + px(BAR_H)
+    if row.peers:
+        extra += px(BAR_GAP) + len(row.peers) * style.line + max(0, len(row.peers) - 1) * px(PEER_GAP)
+    return (px(HEADER_PAD_T) + style.line * len(row.lines) + gap + extra + px(HEADER_PAD_B)
             + px(SEP_MARGIN_Y) * 2 + px(1))
 
 
@@ -696,6 +828,7 @@ class FlyoutHost:
 
     def __init__(self, win32: Optional[_Win32] = None):
         self._w = win32
+        self._start_lock = threading.Lock()
         self._thread: Optional[threading.Thread] = None
         self._ready = threading.Event()
         self._failed = False
@@ -715,9 +848,10 @@ class FlyoutHost:
 
     # ---------------- thread
     def start(self) -> None:
-        if self._thread is None:
-            self._thread = threading.Thread(target=self._main, name="flyout", daemon=True)
-            self._thread.start()
+        with self._start_lock:
+            if self._thread is None:
+                self._thread = threading.Thread(target=self._main, name="flyout", daemon=True)
+                self._thread.start()
 
     def _main(self) -> None:
         try:
@@ -769,6 +903,23 @@ class FlyoutHost:
             log.warning("menu: %s", e)
             return False
         return True
+
+    def is_open_for(self, icon) -> bool:
+        return bool(self.panels and self._icon is icon)
+
+    def toggle(self, menu, icon, point: Optional[Tuple[int, int]] = None) -> bool:
+        """Toggle the flyout on left-click: close if already open for this icon, else open."""
+        if self.is_open_for(icon):
+            root = self._root
+            if root is not None and not self._failed:
+                done = threading.Event()
+                try:
+                    root.after(0, lambda: (self.close(), done.set()))
+                    done.wait(1)
+                    return True
+                except Exception:
+                    pass
+        return self.show(menu, icon, point)
 
     def show(self, menu, icon, point: Optional[Tuple[int, int]] = None) -> bool:
         """Open the flyout for a tray icon (called from the icon's thread).
@@ -1084,6 +1235,7 @@ class _Panel:
         self._hwnds: List[int] = []
         self._overlay_geo = None
         self._fade_start = 0.0
+        self._images: list = []
 
     def _glyph_font(self, g: str):
         return self.style.chevron_font if g in (CHEVRON, FALLBACK_GLYPHS[CHEVRON]) else self.style.check_font
@@ -1189,6 +1341,7 @@ class _Panel:
         if cv is None:
             return
         cv.delete("all")
+        self._images.clear()
         if not is_windows_11():                    # Windows 10: no rounded frame from DWM
             cv.create_rectangle(0, 0, self.w - 1, self.h - 1, outline=c["border"])
         x_check = px(ITEM_MARGIN_X) + px(ITEM_PAD_L)
@@ -1201,10 +1354,47 @@ class _Panel:
                 cv.create_rectangle(px(SEP_MARGIN_X), y, self.w - px(SEP_MARGIN_X) - 1,
                                     y + px(1) - 1, outline="", fill=c["separator"])
                 continue
+            if row.kind == "section":
+                cv.create_text(x_text, row.y + px(SECTION_PAD_T), text=row.text,
+                               font=getattr(st, "section_font", st.font), fill=c["muted"], anchor="nw")
+                continue
             if row.kind == "header":
-                for (text, is_detail), top in zip(row.lines, header_line_tops(row, st)):
-                    cv.create_text(x_text, top, text=text, font=st.font,
+                tops = header_line_tops(row, st)
+                t_font = getattr(st, "title_font", st.font) if row.bar is not None else st.font
+                for (text, is_detail), top in zip(row.lines, tops):
+                    cv.create_text(x_text, top, text=text, font=st.font if is_detail else t_font,
                                    fill=c["muted"] if is_detail else c["text"], anchor="nw")
+                cur_y = (tops[-1] + st.line) if tops else (row.y + px(HEADER_PAD_T))
+                if row.bar is not None:
+                    lvl, b_kind = row.bar
+                    cur_y += px(BAR_GAP)
+                    bh = max(2, px(BAR_H))
+                    bar_right = x_right - px(4)
+                    bw = max(bh * 2, bar_right - x_text)
+                    try:
+                        from PIL import ImageTk
+                        pil_bar = render_bar_image(bw, bh, lvl, b_kind, st.light)
+                        photo = ImageTk.PhotoImage(pil_bar, master=self.win)
+                        self._images.append(photo)
+                        cv.create_image(x_text, cur_y, image=photo, anchor="nw")
+                    except Exception:
+                        rounded_rect(cv, x_text, cur_y, x_text + bw, cur_y + bh, bh // 2, c["separator"])
+                    cur_y += bh
+                if row.peers:
+                    cur_y += px(BAR_GAP)
+                    for p_name, p_val, p_kind in row.peers:
+                        val_w = st.font.measure(p_val) + px(10)
+                        max_nw = max(px(40), (x_right - x_text) - val_w)
+                        shown = p_name
+                        if st.font.measure(shown) > max_nw:
+                            while len(shown) > 1 and st.font.measure(shown + "…") > max_nw:
+                                shown = shown[:-1]
+                            shown += "…"
+                        cv.create_text(x_text, cur_y, text=shown, font=st.font,
+                                       fill=c["muted"], anchor="nw")
+                        cv.create_text(x_right, cur_y, text=p_val, font=st.font,
+                                       fill=bar_colour(p_kind, st.light), anchor="ne")
+                        cur_y += st.line + px(PEER_GAP)
                 if row.edit is not None:
                     x0, y0, x1, y1 = edit_box(row, self.w, st)
                     lit = self.hover == self.rows.index(row) and self.part in ("edit", "keyboard")

@@ -221,4 +221,11 @@ MESSAGES = {
     'interval.2': '1 min',
     'interval.3': '2 min',
     'interval.4': '5 min',
+    "state.charged_minutes": "cargando {minutes} min",
+    "state.charged_hours_minutes": "cargando {hours} h {minutes} min",
+    "state.charging_frozen_hint": "el nivel puede actualizarse al desconectar",
+    "preferences.group.general": "General y alertas",
+    "preferences.group.devices": "Dispositivos y conexiones",
+    "preferences.group.appearance": "Icono y apariencia",
+    "preferences.group.system": "Sistema y actualizaciones",
 }

@@ -136,6 +136,19 @@ class DeviceTypeTests(HideRenameTestCase):
         app.wait_next(sig=None)
         self.assertEqual(waits, [2.5])          # not the 3 s re-check
 
+    def test_make_providers_skips_disabled_and_lazily_restores_in_order(self):
+        all_off_except = set(hb.PROVIDER_LABELS) - {"lamzu", "ninjutso"}
+        initial = hb.make_providers(disabled=all_off_except)
+        self.assertEqual([type(p).__name__ for p in initial],
+                         ["LamzuProvider", "NinjutsoProvider", "LamzuAtlantisProvider"])
+        app = make_app({"disabled_providers": sorted(all_off_except - {"razer"})})
+        app.providers = list(initial)
+        app._managed_providers = app.providers
+        app._ensure_enabled_providers()
+        self.assertEqual([type(p).__name__ for p in app.providers],
+                         ["RazerProvider", "LamzuProvider", "NinjutsoProvider", "LamzuAtlantisProvider"])
+        self.assertIs(app.providers[1], initial[0])
+
 
 # ---------------------------------------------------------------- low per device
 class DeviceLowTests(HideRenameTestCase):

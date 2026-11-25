@@ -211,4 +211,11 @@ MESSAGES = {
     'interval.2': '1 分钟',
     'interval.3': '2 分钟',
     'interval.4': '5 分钟',
+    "state.charged_minutes": "已充 {minutes} 分钟",
+    "state.charged_hours_minutes": "已充 {hours} 小时 {minutes} 分钟",
+    "state.charging_frozen_hint": "部分固件拔线后才刷新百分比",
+    "preferences.group.general": "常规与提醒",
+    "preferences.group.devices": "连接与设备",
+    "preferences.group.appearance": "图标与外观",
+    "preferences.group.system": "系统与更新",
 }
